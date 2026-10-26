@@ -6,21 +6,27 @@ using Microsoft.EntityFrameworkCore;
 using Tutorbub.Data;
 using Tutorbub.Models;
 using System;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Tutorbub.Controllers
 {
     public class TuitionController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private readonly DatabaseHelper _dbHelper;
+        private readonly IWebHostEnvironment _webHostEnvironment;
 
-        public TuitionController(ApplicationDbContext context)
+        public TuitionController(ApplicationDbContext context, IConfiguration configuration, IWebHostEnvironment webHostEnvironment)
         {
             _context = context;
+            _dbHelper = new DatabaseHelper(configuration);
+            _webHostEnvironment = webHostEnvironment;
         }
 
         // ============================================================
-        // ===== TUITION CIRCULAR (Public Listing) =====
+        // ===== TUITION CIRCULAR (Public Listing + Social Feed) =====
         // GET: /Tuition/Circular
         // ============================================================
         [HttpGet]
@@ -65,6 +71,174 @@ namespace Tutorbub.Controllers
                 TempData["Error"] = "Unable to load tuition posts. Please try again.";
                 return View(new System.Collections.Generic.List<TuitionPost>());
             }
+        }
+
+        // ============================================================
+        // ===== CREATE CIRCULAR POST (Student Feed) =====
+        // POST: /Tuition/CreateCircularPost
+        // ============================================================
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateCircularPost(string content, string? preferredArea, string? classLevel, string? subjects, string? budget, IFormFile? imageFile)
+        {
+            // ✅ চেক: ইউজার লগইন করা আছে কিনা
+            var userIdStr = HttpContext.Session.GetString("UserId");
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+                return Json(new { success = false, message = "Please login to post." });
+
+            if (string.IsNullOrWhiteSpace(content) && imageFile == null)
+                return Json(new { success = false, message = "Content or image is required." });
+
+            string? imageUrl = null;
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
+                var allowed = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+                if (!allowed.Contains(ext) || imageFile.Length > 5 * 1024 * 1024)
+                    return Json(new { success = false, message = "Invalid image or size over 5MB." });
+
+                var uploadPath = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "tuition-posts");
+                if (!Directory.Exists(uploadPath)) Directory.CreateDirectory(uploadPath);
+
+                var fileName = $"post_{DateTime.Now.Ticks}{ext}";
+                var filePath = Path.Combine(uploadPath, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await imageFile.CopyToAsync(stream);
+                }
+                imageUrl = $"/uploads/tuition-posts/{fileName}";
+            }
+
+            var post = new TuitionCircularPost
+            {
+                UserId = userId,
+                Content = content?.Trim() ?? "",
+                ImageUrl = imageUrl,
+                PreferredArea = preferredArea?.Trim(),
+                ClassLevel = classLevel?.Trim(),
+                Subjects = subjects?.Trim(),
+                Budget = budget?.Trim()
+            };
+
+            if (_dbHelper.CreateTuitionCircularPost(post, out string? error))
+                return Json(new { success = true });
+
+            return Json(new { success = false, message = error });
+        }
+
+        // ============================================================
+        // ===== ADD CIRCULAR COMMENT (Student Feed) =====
+        // POST: /Tuition/AddCircularComment
+        // ============================================================
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult AddCircularComment(int postId, string content, int? parentId)
+        {
+            if (HttpContext.Session.GetString("UserName") == null)
+                return Json(new { success = false, message = "Please login to comment." });
+
+            if (string.IsNullOrWhiteSpace(content))
+                return Json(new { success = false, message = "Comment cannot be empty." });
+
+            var userIdStr = HttpContext.Session.GetString("UserId");
+            if (!int.TryParse(userIdStr, out int userId))
+                return Json(new { success = false, message = "Invalid user." });
+
+            content = content.Trim();
+            if (content.Length > 2000)
+                return Json(new { success = false, message = "Comment is too long." });
+
+            string senderName = HttpContext.Session.GetString("UserFullName")
+                                ?? HttpContext.Session.GetString("UserName")
+                                ?? "Someone";
+
+            int? rootParentId = null;
+            TuitionCircularComment? repliedTo = null;
+
+            if (parentId.HasValue)
+            {
+                var existing = _dbHelper.GetTuitionCircularComments(postId);
+                foreach (var top in existing)
+                {
+                    if (top.Id == parentId.Value)
+                    {
+                        repliedTo = top; rootParentId = top.Id; break;
+                    }
+                    var nested = top.Replies.FirstOrDefault(r => r.Id == parentId.Value);
+                    if (nested != null)
+                    {
+                        repliedTo = nested; rootParentId = top.Id; break;
+                    }
+                }
+
+                if (repliedTo == null)
+                    return Json(new { success = false, message = "The comment you are replying to no longer exists." });
+            }
+
+            var comment = new TuitionCircularComment
+            {
+                PostId = postId,
+                UserId = userId,
+                Content = content,
+                ParentId = rootParentId
+            };
+
+            if (_dbHelper.AddTuitionCircularComment(comment, out string? error))
+            {
+                // Notifications can be added here if needed
+
+                return Json(new
+                {
+                    success = true,
+                    comment = new
+                    {
+                        id = comment.Id,
+                        postId = postId,
+                        parentId = rootParentId,
+                        userFullName = senderName,
+                        userProfileImage = HttpContext.Session.GetString("ProfileImageLink") ?? "",
+                        content = comment.Content,
+                        createdAtUtc = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"),
+                        likeCount = 0,
+                        isLiked = false
+                    }
+                });
+            }
+
+            return Json(new { success = false, message = error });
+        }
+
+        // ============================================================
+        // ===== TOGGLE POST LIKE =====
+        // POST: /Tuition/ToggleCircularLike
+        // ============================================================
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult ToggleCircularLike(int postId)
+        {
+            var userIdStr = HttpContext.Session.GetString("UserId");
+            if (!int.TryParse(userIdStr, out int userId))
+                return Json(new { success = false, message = "Please login to like." });
+
+            var result = _dbHelper.ToggleTuitionCircularLike(postId, userId);
+            return Json(new { success = true, isLiked = result.isLiked, count = result.newCount });
+        }
+
+        // ============================================================
+        // ===== TOGGLE COMMENT LIKE =====
+        // POST: /Tuition/ToggleCircularCommentLike
+        // ============================================================
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult ToggleCircularCommentLike(int commentId)
+        {
+            var userIdStr = HttpContext.Session.GetString("UserId");
+            if (!int.TryParse(userIdStr, out int userId))
+                return Json(new { success = false, message = "Please login to like." });
+
+            var result = _dbHelper.ToggleTuitionCircularCommentLike(commentId, userId);
+            return Json(new { success = true, isLiked = result.isLiked, count = result.count });
         }
 
         // ============================================================

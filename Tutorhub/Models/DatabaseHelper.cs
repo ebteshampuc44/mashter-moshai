@@ -1067,6 +1067,111 @@ namespace Tutorbub.Models
         }
 
         // ============================================================
+        // ===== ✅ USER DASHBOARD STATS =====
+        // ============================================================
+
+        public UserDashboardStats GetUserDashboardStats(int userId)
+        {
+            var stats = new UserDashboardStats();
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                connection.Open();
+
+                // ১. মোট পোস্ট সংখ্যা
+                using (var cmd = new NpgsqlCommand(@"SELECT COUNT(*) FROM ""TuitionCircularPosts"" WHERE ""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalPosts = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                // ২. মোট লাইক
+                using (var cmd = new NpgsqlCommand(@"SELECT COALESCE(SUM(""LikeCount""), 0) FROM ""TuitionCircularPosts"" WHERE ""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalLikes = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                // ৩. মোট কমেন্ট
+                using (var cmd = new NpgsqlCommand(@"
+                    SELECT COUNT(*) FROM ""TuitionCircularComments"" c
+                    INNER JOIN ""TuitionCircularPosts"" p ON c.""PostId"" = p.""Id""
+                    WHERE p.""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalComments = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                // ৪. মোট পাওয়া টিচার (যারা পোস্টে কমেন্ট করেছে এবং তাদের রোল Teacher)
+                using (var cmd = new NpgsqlCommand(@"
+                    SELECT COUNT(DISTINCT c.""UserId"") FROM ""TuitionCircularComments"" c
+                    INNER JOIN ""TuitionCircularPosts"" p ON c.""PostId"" = p.""Id""
+                    INNER JOIN ""Users"" u ON c.""UserId"" = u.""Id""
+                    WHERE p.""UserId"" = @uid AND u.""Role"" = 'Teacher'", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalTeachersConnected = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error GetUserDashboardStats: " + ex.Message);
+            }
+
+            return stats;
+        }
+
+        public List<TuitionCircularPost> GetUserCircularPosts(int userId, int limit = 10)
+        {
+            var list = new List<TuitionCircularPost>();
+            string query = @"
+                SELECT p.""Id"", p.""UserId"", p.""Content"", p.""ImageUrl"", p.""PreferredArea"", p.""ClassLevel"", p.""Subjects"", p.""Budget"", p.""LikeCount"", p.""CreatedAt"",
+                       u.""FullName"", u.""UserName"", u.""ProfileImageLink""
+                FROM ""TuitionCircularPosts"" p
+                LEFT JOIN ""Users"" u ON p.""UserId"" = u.""Id""
+                WHERE p.""UserId"" = @uid
+                ORDER BY p.""CreatedAt"" DESC
+                LIMIT @limit";
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@uid", userId);
+                command.Parameters.AddWithValue("@limit", limit);
+                connection.Open();
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(new TuitionCircularPost
+                    {
+                        Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                        UserId = reader.GetInt32(reader.GetOrdinal("UserId")),
+                        Content = reader["Content"]?.ToString() ?? "",
+                        ImageUrl = reader["ImageUrl"]?.ToString(),
+                        PreferredArea = reader["PreferredArea"]?.ToString(),
+                        ClassLevel = reader["ClassLevel"]?.ToString(),
+                        Subjects = reader["Subjects"]?.ToString(),
+                        Budget = reader["Budget"]?.ToString(),
+                        LikeCount = Convert.ToInt32(reader["LikeCount"]),
+                        CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
+                        UserFullName = reader["FullName"]?.ToString() ?? "User",
+                        UserName = reader["UserName"]?.ToString() ?? "",
+                        UserProfileImage = reader["ProfileImageLink"]?.ToString()
+                    });
+                }
+                return list;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error GetUserCircularPosts: " + ex.Message);
+                return list;
+            }
+        }
+
+        // ============================================================
         // ===== NOTIFICATION RELATED METHODS =====
         // ============================================================
 
@@ -2177,115 +2282,301 @@ namespace Tutorbub.Models
         }
 
         // ============================================================
-        // ===== PRIVATE MAPPERS =====
+        // ===== ✅ TUITION CIRCULAR POSTS (Student Posts) =====
         // ============================================================
 
-        private User MapUser(NpgsqlDataReader reader)
+        public List<TuitionCircularPost> GetAllTuitionCircularPosts(string? currentUserId = null)
         {
-            return new User
+            var list = new List<TuitionCircularPost>();
+            string query = @"
+                SELECT p.""Id"", p.""UserId"", p.""Content"", p.""ImageUrl"", p.""PreferredArea"", p.""ClassLevel"", p.""Subjects"", p.""Budget"", p.""LikeCount"", p.""CreatedAt"",
+                       u.""FullName"", u.""UserName"", u.""ProfileImageLink""
+                FROM ""TuitionCircularPosts"" p
+                LEFT JOIN ""Users"" u ON p.""UserId"" = u.""Id""
+                ORDER BY p.""CreatedAt"" DESC";
+
+            try
             {
-                Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                UserName = reader["UserName"]?.ToString() ?? string.Empty,
-                Password = reader["Password"]?.ToString() ?? string.Empty,
-                FullName = reader["FullName"]?.ToString() ?? string.Empty,
-                Email = reader["Email"]?.ToString() ?? string.Empty,
-                CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
-                LastLoginAt = reader["LastLoginAt"] as DateTime?,
-                Role = reader["Role"]?.ToString() ?? "User",
-                IsActive = reader["IsActive"] as bool? ?? true,
-                MobileNumber = reader["MobileNumber"]?.ToString(),
-                ProfileImage = reader["ProfileImage"]?.ToString(),
-                Gender = reader["Gender"]?.ToString(),
-                AgeRange = reader["AgeRange"]?.ToString(),
-                PrimaryDeviceType = reader["PrimaryDeviceType"]?.ToString(),
-                YearsOfExperience = reader["YearsOfExperience"]?.ToString(),
-                AreaType = reader["AreaType"]?.ToString(),
-                Country = reader["Country"]?.ToString(),
-                StreetAddress = reader["StreetAddress"]?.ToString(),
-                PermanentAddress = reader["PermanentAddress"]?.ToString(),
-                EducationLevel = reader["EducationLevel"]?.ToString(),
-                CurrentStudyStatus = reader["CurrentStudyStatus"]?.ToString(),
-                ExamDegreeTitle = reader["ExamDegreeTitle"]?.ToString(),
-                InstitutionName = reader["InstitutionName"]?.ToString(),
-                PassingYear = reader["PassingYear"]?.ToString(),
-                IsCSEStudent = reader["IsCSEStudent"] as bool?,
-                CvLink = reader["CvLink"]?.ToString(),
-                GithubProfile = reader["GithubProfile"]?.ToString(),
-                PortfolioLink = reader["PortfolioLink"]?.ToString(),
-                LinkedInProfile = reader["LinkedInProfile"]?.ToString(),
-                ProfileImageLink = reader["ProfileImageLink"]?.ToString()
-            };
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                connection.Open();
+                using var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    var post = new TuitionCircularPost
+                    {
+                        Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                        UserId = reader.GetInt32(reader.GetOrdinal("UserId")),
+                        Content = reader["Content"]?.ToString() ?? "",
+                        ImageUrl = reader["ImageUrl"]?.ToString(),
+                        PreferredArea = reader["PreferredArea"]?.ToString(),
+                        ClassLevel = reader["ClassLevel"]?.ToString(),
+                        Subjects = reader["Subjects"]?.ToString(),
+                        Budget = reader["Budget"]?.ToString(),
+                        LikeCount = Convert.ToInt32(reader["LikeCount"]),
+                        CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
+                        UserFullName = reader["FullName"]?.ToString() ?? "Student",
+                        UserName = reader["UserName"]?.ToString() ?? "",
+                        UserProfileImage = reader["ProfileImageLink"]?.ToString()
+                    };
+                    list.Add(post);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error GetAllTuitionCircularPosts: " + ex.Message);
+                return list;
+            }
+
+            foreach (var post in list)
+            {
+                post.Comments = GetTuitionCircularComments(post.Id, currentUserId);
+            }
+
+            return list;
         }
 
-        private TeacherRequest MapTeacherRequest(NpgsqlDataReader reader)
+        public List<TuitionCircularComment> GetTuitionCircularComments(int postId, string? currentUserId = null)
         {
-            return new TeacherRequest
+            var allComments = new List<TuitionCircularComment>();
+            int uid = int.TryParse(currentUserId, out var parsedUid) ? parsedUid : -1;
+
+            string query = @"
+                SELECT c.""Id"", c.""PostId"", c.""UserId"", c.""Content"", c.""ParentId"", c.""CreatedAt"",
+                       u.""FullName"", u.""UserName"", u.""ProfileImageLink"",
+                       (SELECT COUNT(*) FROM ""TuitionCircularCommentLikes"" cl WHERE cl.""CommentId"" = c.""Id"") AS ""LikeCount"",
+                       EXISTS (SELECT 1 FROM ""TuitionCircularCommentLikes"" cl2
+                               WHERE cl2.""CommentId"" = c.""Id"" AND cl2.""UserId"" = @uid) AS ""IsLiked""
+                FROM ""TuitionCircularComments"" c
+                LEFT JOIN ""Users"" u ON c.""UserId"" = u.""Id""
+                WHERE c.""PostId"" = @postId
+                ORDER BY c.""CreatedAt"" ASC";
+
+            try
             {
-                Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                UserId = reader.GetInt32(reader.GetOrdinal("UserId")),
-                FullName = reader["FullName"]?.ToString() ?? string.Empty,
-                Email = reader["Email"]?.ToString() ?? string.Empty,
-                MobileNumber = reader["MobileNumber"]?.ToString() ?? string.Empty,
-                Education = reader["Education"]?.ToString() ?? string.Empty,
-                Institution = reader["Institution"]?.ToString() ?? string.Empty,
-                SubjectExpertise = reader["SubjectExpertise"]?.ToString() ?? string.Empty,
-                Experience = reader["Experience"]?.ToString() ?? string.Empty,
-                TeachingStyle = reader["TeachingStyle"]?.ToString() ?? string.Empty,
-                AvailableDays = reader["AvailableDays"]?.ToString() ?? string.Empty,
-                PreferredTime = reader["PreferredTime"]?.ToString() ?? string.Empty,
-                HourlyRate = reader["HourlyRate"]?.ToString() ?? string.Empty,
-                CvLink = reader["CvLink"]?.ToString() ?? string.Empty,
-                WhyTeach = reader["WhyTeach"]?.ToString() ?? string.Empty,
-                Status = reader["Status"]?.ToString() ?? "Pending",
-                RequestDate = reader["RequestDate"] as DateTime? ?? DateTime.UtcNow,
-                ResponseDate = reader["ResponseDate"] as DateTime?,
-                AdminNote = reader["AdminNote"]?.ToString()
-            };
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@postId", postId);
+                command.Parameters.AddWithValue("@uid", uid);
+                connection.Open();
+                using var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    allComments.Add(new TuitionCircularComment
+                    {
+                        Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                        PostId = reader.GetInt32(reader.GetOrdinal("PostId")),
+                        UserId = reader.GetInt32(reader.GetOrdinal("UserId")),
+                        Content = reader["Content"]?.ToString() ?? "",
+                        ParentId = reader["ParentId"] != DBNull.Value ? Convert.ToInt32(reader["ParentId"]) : (int?)null,
+                        CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
+                        UserFullName = reader["FullName"]?.ToString() ?? "User",
+                        UserName = reader["UserName"]?.ToString() ?? "",
+                        UserProfileImage = reader["ProfileImageLink"]?.ToString(),
+                        LikeCount = Convert.ToInt32(reader["LikeCount"]),
+                        IsLikedByMe = Convert.ToBoolean(reader["IsLiked"])
+                    });
+                }
+
+                var byId = allComments.ToDictionary(c => c.Id);
+                var topLevel = allComments.Where(c => c.ParentId == null || !byId.ContainsKey(c.ParentId.Value)).ToList();
+                var topSet = new HashSet<int>(topLevel.Select(c => c.Id));
+
+                foreach (var c in allComments)
+                {
+                    if (topSet.Contains(c.Id)) continue;
+                    var root = c;
+                    int guard = 0;
+                    while (root.ParentId.HasValue && byId.TryGetValue(root.ParentId.Value, out var p) && guard++ < 50)
+                        root = p;
+                    root.Replies.Add(c);
+                }
+
+                return topLevel;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error GetTuitionCircularComments: " + ex.Message);
+                return new List<TuitionCircularComment>();
+            }
         }
 
-        private TutorRequest MapTutorRequest(NpgsqlDataReader reader)
+        public bool CreateTuitionCircularPost(TuitionCircularPost post, out string? errorMessage)
         {
-            return new TutorRequest
+            errorMessage = null;
+            string query = @"
+                INSERT INTO ""TuitionCircularPosts"" (""UserId"", ""Content"", ""ImageUrl"", ""PreferredArea"", ""ClassLevel"", ""Subjects"", ""Budget"", ""LikeCount"", ""CreatedAt"")
+                VALUES (@userId, @content, @imageUrl, @preferredArea, @classLevel, @subjects, @budget, 0, @createdAt)
+                RETURNING ""Id""";
+
+            try
             {
-                Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                TutorId = reader["TutorId"]?.ToString(),
-                TutorName = reader["TutorName"]?.ToString(),
-                StudentName = reader["StudentName"]?.ToString() ?? "",
-                PhoneNumber = reader["PhoneNumber"]?.ToString(),
-                WhatsAppNumber = reader["WhatsAppNumber"]?.ToString(),
-                Email = reader["Email"]?.ToString(),
-                StudentClass = reader["StudentClass"]?.ToString(),
-                RequiredSubject = reader["RequiredSubject"]?.ToString(),
-                PreferredArea = reader["PreferredArea"]?.ToString(),
-                TeachingMode = reader["TeachingMode"]?.ToString(),
-                PreferredDays = reader["PreferredDays"]?.ToString(),
-                PreferredTime = reader["PreferredTime"]?.ToString(),
-                MonthlyBudget = reader["MonthlyBudget"]?.ToString(),
-                AdditionalNotes = reader["AdditionalNotes"]?.ToString(),
-                RequestType = reader["RequestType"]?.ToString() ?? "SpecificTutor",
-                RequestId = reader["RequestId"]?.ToString(),
-                Status = reader["Status"]?.ToString() ?? "Pending",
-                AdminNote = reader["AdminNote"]?.ToString(),
-                CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
-                UpdatedAt = reader["UpdatedAt"] as DateTime?
-            };
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@userId", post.UserId);
+                command.Parameters.AddWithValue("@content", post.Content ?? "");
+                command.Parameters.AddWithValue("@imageUrl", (object?)post.ImageUrl ?? DBNull.Value);
+                command.Parameters.AddWithValue("@preferredArea", (object?)post.PreferredArea ?? DBNull.Value);
+                command.Parameters.AddWithValue("@classLevel", (object?)post.ClassLevel ?? DBNull.Value);
+                command.Parameters.AddWithValue("@subjects", (object?)post.Subjects ?? DBNull.Value);
+                command.Parameters.AddWithValue("@budget", (object?)post.Budget ?? DBNull.Value);
+                command.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+
+                connection.Open();
+                var result = command.ExecuteScalar();
+                if (result != null && int.TryParse(result.ToString(), out int newId))
+                {
+                    post.Id = newId;
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
         }
 
-        private Notice MapNotice(NpgsqlDataReader reader)
+        public bool AddTuitionCircularComment(TuitionCircularComment comment, out string? errorMessage)
         {
-            return new Notice
+            errorMessage = null;
+            string query = @"
+                INSERT INTO ""TuitionCircularComments"" (""PostId"", ""UserId"", ""Content"", ""ParentId"", ""CreatedAt"")
+                VALUES (@postId, @userId, @content, @parentId, @createdAt)
+                RETURNING ""Id""";
+
+            try
             {
-                Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                Title = reader["Title"]?.ToString() ?? "",
-                Content = reader["Content"]?.ToString() ?? "",
-                Category = reader["Category"]?.ToString() ?? "News",
-                ImageUrl = reader["ImageUrl"]?.ToString() ?? "",
-                PublishedDate = reader["PublishedDate"] as DateTime? ?? DateTime.UtcNow,
-                IsAnnouncement = reader["IsAnnouncement"] as bool? ?? false,
-                IsActive = reader["IsActive"] as bool? ?? true,
-                CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
-                UpdatedAt = reader["UpdatedAt"] as DateTime?
-            };
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@postId", comment.PostId);
+                command.Parameters.AddWithValue("@userId", comment.UserId);
+                command.Parameters.AddWithValue("@content", comment.Content ?? "");
+                command.Parameters.AddWithValue("@parentId", (object?)comment.ParentId ?? DBNull.Value);
+                command.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+
+                connection.Open();
+                var result = command.ExecuteScalar();
+                if (result != null && int.TryParse(result.ToString(), out int newId))
+                {
+                    comment.Id = newId;
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
+        public (bool isLiked, int newCount) ToggleTuitionCircularLike(int postId, int userId)
+        {
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                connection.Open();
+
+                string checkQuery = @"SELECT COUNT(*) FROM ""TuitionCircularLikes"" WHERE ""PostId"" = @postId AND ""UserId"" = @userId";
+                using var checkCmd = new NpgsqlCommand(checkQuery, connection);
+                checkCmd.Parameters.AddWithValue("@postId", postId);
+                checkCmd.Parameters.AddWithValue("@userId", userId);
+                long exists = Convert.ToInt64(checkCmd.ExecuteScalar());
+
+                bool isLiked;
+                int change = 1;
+
+                if (exists > 0)
+                {
+                    string delQuery = @"DELETE FROM ""TuitionCircularLikes"" WHERE ""PostId"" = @postId AND ""UserId"" = @userId";
+                    using var delCmd = new NpgsqlCommand(delQuery, connection);
+                    delCmd.Parameters.AddWithValue("@postId", postId);
+                    delCmd.Parameters.AddWithValue("@userId", userId);
+                    delCmd.ExecuteNonQuery();
+                    isLiked = false;
+                    change = -1;
+                }
+                else
+                {
+                    string insQuery = @"INSERT INTO ""TuitionCircularLikes"" (""PostId"", ""UserId"", ""CreatedAt"") VALUES (@postId, @userId, @createdAt)";
+                    using var insCmd = new NpgsqlCommand(insQuery, connection);
+                    insCmd.Parameters.AddWithValue("@postId", postId);
+                    insCmd.Parameters.AddWithValue("@userId", userId);
+                    insCmd.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+                    insCmd.ExecuteNonQuery();
+                    isLiked = true;
+                }
+
+                string updQuery = @"UPDATE ""TuitionCircularPosts"" SET ""LikeCount"" = ""LikeCount"" + @change WHERE ""Id"" = @postId RETURNING ""LikeCount""";
+                using var updCmd = new NpgsqlCommand(updQuery, connection);
+                updCmd.Parameters.AddWithValue("@change", change);
+                updCmd.Parameters.AddWithValue("@postId", postId);
+                int newCount = Convert.ToInt32(updCmd.ExecuteScalar());
+
+                return (isLiked, newCount);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error ToggleTuitionCircularLike: " + ex.Message);
+                return (false, 0);
+            }
+        }
+
+        public (bool isLiked, int count) ToggleTuitionCircularCommentLike(int commentId, int userId)
+        {
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                connection.Open();
+
+                bool exists;
+                using (var checkCmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TuitionCircularCommentLikes"" WHERE ""CommentId"" = @cid AND ""UserId"" = @uid", connection))
+                {
+                    checkCmd.Parameters.AddWithValue("@cid", commentId);
+                    checkCmd.Parameters.AddWithValue("@uid", userId);
+                    exists = Convert.ToInt64(checkCmd.ExecuteScalar()) > 0;
+                }
+
+                if (exists)
+                {
+                    using var delCmd = new NpgsqlCommand(
+                        @"DELETE FROM ""TuitionCircularCommentLikes"" WHERE ""CommentId"" = @cid AND ""UserId"" = @uid", connection);
+                    delCmd.Parameters.AddWithValue("@cid", commentId);
+                    delCmd.Parameters.AddWithValue("@uid", userId);
+                    delCmd.ExecuteNonQuery();
+                }
+                else
+                {
+                    using var insCmd = new NpgsqlCommand(
+                        @"INSERT INTO ""TuitionCircularCommentLikes"" (""CommentId"", ""UserId"", ""CreatedAt"")
+                          VALUES (@cid, @uid, @createdAt)
+                          ON CONFLICT DO NOTHING", connection);
+                    insCmd.Parameters.AddWithValue("@cid", commentId);
+                    insCmd.Parameters.AddWithValue("@uid", userId);
+                    insCmd.Parameters.AddWithValue("@createdAt", DateTime.UtcNow);
+                    insCmd.ExecuteNonQuery();
+                }
+
+                int count;
+                using (var cntCmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TuitionCircularCommentLikes"" WHERE ""CommentId"" = @cid", connection))
+                {
+                    cntCmd.Parameters.AddWithValue("@cid", commentId);
+                    count = Convert.ToInt32(cntCmd.ExecuteScalar());
+                }
+
+                return (!exists, count);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error ToggleTuitionCircularCommentLike: " + ex.Message);
+                return (false, 0);
+            }
         }
 
         // ============================================================
@@ -2630,6 +2921,118 @@ namespace Tutorbub.Models
                 return command.ExecuteNonQuery() > 0;
             }
             catch { return false; }
+        }
+
+        // ============================================================
+        // ===== PRIVATE MAPPERS =====
+        // ============================================================
+
+        private User MapUser(NpgsqlDataReader reader)
+        {
+            return new User
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                UserName = reader["UserName"]?.ToString() ?? string.Empty,
+                Password = reader["Password"]?.ToString() ?? string.Empty,
+                FullName = reader["FullName"]?.ToString() ?? string.Empty,
+                Email = reader["Email"]?.ToString() ?? string.Empty,
+                CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
+                LastLoginAt = reader["LastLoginAt"] as DateTime?,
+                Role = reader["Role"]?.ToString() ?? "User",
+                IsActive = reader["IsActive"] as bool? ?? true,
+                MobileNumber = reader["MobileNumber"]?.ToString(),
+                ProfileImage = reader["ProfileImage"]?.ToString(),
+                Gender = reader["Gender"]?.ToString(),
+                AgeRange = reader["AgeRange"]?.ToString(),
+                PrimaryDeviceType = reader["PrimaryDeviceType"]?.ToString(),
+                YearsOfExperience = reader["YearsOfExperience"]?.ToString(),
+                AreaType = reader["AreaType"]?.ToString(),
+                Country = reader["Country"]?.ToString(),
+                StreetAddress = reader["StreetAddress"]?.ToString(),
+                PermanentAddress = reader["PermanentAddress"]?.ToString(),
+                EducationLevel = reader["EducationLevel"]?.ToString(),
+                CurrentStudyStatus = reader["CurrentStudyStatus"]?.ToString(),
+                ExamDegreeTitle = reader["ExamDegreeTitle"]?.ToString(),
+                InstitutionName = reader["InstitutionName"]?.ToString(),
+                PassingYear = reader["PassingYear"]?.ToString(),
+                IsCSEStudent = reader["IsCSEStudent"] as bool?,
+                CvLink = reader["CvLink"]?.ToString(),
+                GithubProfile = reader["GithubProfile"]?.ToString(),
+                PortfolioLink = reader["PortfolioLink"]?.ToString(),
+                LinkedInProfile = reader["LinkedInProfile"]?.ToString(),
+                ProfileImageLink = reader["ProfileImageLink"]?.ToString()
+            };
+        }
+
+        private TeacherRequest MapTeacherRequest(NpgsqlDataReader reader)
+        {
+            return new TeacherRequest
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                UserId = reader.GetInt32(reader.GetOrdinal("UserId")),
+                FullName = reader["FullName"]?.ToString() ?? string.Empty,
+                Email = reader["Email"]?.ToString() ?? string.Empty,
+                MobileNumber = reader["MobileNumber"]?.ToString() ?? string.Empty,
+                Education = reader["Education"]?.ToString() ?? string.Empty,
+                Institution = reader["Institution"]?.ToString() ?? string.Empty,
+                SubjectExpertise = reader["SubjectExpertise"]?.ToString() ?? string.Empty,
+                Experience = reader["Experience"]?.ToString() ?? string.Empty,
+                TeachingStyle = reader["TeachingStyle"]?.ToString() ?? string.Empty,
+                AvailableDays = reader["AvailableDays"]?.ToString() ?? string.Empty,
+                PreferredTime = reader["PreferredTime"]?.ToString() ?? string.Empty,
+                HourlyRate = reader["HourlyRate"]?.ToString() ?? string.Empty,
+                CvLink = reader["CvLink"]?.ToString() ?? string.Empty,
+                WhyTeach = reader["WhyTeach"]?.ToString() ?? string.Empty,
+                Status = reader["Status"]?.ToString() ?? "Pending",
+                RequestDate = reader["RequestDate"] as DateTime? ?? DateTime.UtcNow,
+                ResponseDate = reader["ResponseDate"] as DateTime?,
+                AdminNote = reader["AdminNote"]?.ToString()
+            };
+        }
+
+        private TutorRequest MapTutorRequest(NpgsqlDataReader reader)
+        {
+            return new TutorRequest
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                TutorId = reader["TutorId"]?.ToString(),
+                TutorName = reader["TutorName"]?.ToString(),
+                StudentName = reader["StudentName"]?.ToString() ?? "",
+                PhoneNumber = reader["PhoneNumber"]?.ToString(),
+                WhatsAppNumber = reader["WhatsAppNumber"]?.ToString(),
+                Email = reader["Email"]?.ToString(),
+                StudentClass = reader["StudentClass"]?.ToString(),
+                RequiredSubject = reader["RequiredSubject"]?.ToString(),
+                PreferredArea = reader["PreferredArea"]?.ToString(),
+                TeachingMode = reader["TeachingMode"]?.ToString(),
+                PreferredDays = reader["PreferredDays"]?.ToString(),
+                PreferredTime = reader["PreferredTime"]?.ToString(),
+                MonthlyBudget = reader["MonthlyBudget"]?.ToString(),
+                AdditionalNotes = reader["AdditionalNotes"]?.ToString(),
+                RequestType = reader["RequestType"]?.ToString() ?? "SpecificTutor",
+                RequestId = reader["RequestId"]?.ToString(),
+                Status = reader["Status"]?.ToString() ?? "Pending",
+                AdminNote = reader["AdminNote"]?.ToString(),
+                CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
+                UpdatedAt = reader["UpdatedAt"] as DateTime?
+            };
+        }
+
+        private Notice MapNotice(NpgsqlDataReader reader)
+        {
+            return new Notice
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                Title = reader["Title"]?.ToString() ?? "",
+                Content = reader["Content"]?.ToString() ?? "",
+                Category = reader["Category"]?.ToString() ?? "News",
+                ImageUrl = reader["ImageUrl"]?.ToString() ?? "",
+                PublishedDate = reader["PublishedDate"] as DateTime? ?? DateTime.UtcNow,
+                IsAnnouncement = reader["IsAnnouncement"] as bool? ?? false,
+                IsActive = reader["IsActive"] as bool? ?? true,
+                CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow,
+                UpdatedAt = reader["UpdatedAt"] as DateTime?
+            };
         }
     }
 }

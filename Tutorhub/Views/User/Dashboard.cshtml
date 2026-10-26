@@ -1,0 +1,527 @@
+﻿@using Tutorbub.Models
+@{
+    ViewData["Title"] = "Student Dashboard";
+    Layout = "_Layout";
+
+    var user = ViewBag.User as User;
+    var stats = ViewBag.Stats as UserDashboardStats ?? new UserDashboardStats();
+    var recentPosts = ViewBag.RecentPosts as List<TuitionCircularPost> ?? new List<TuitionCircularPost>();
+}
+
+<style>
+    /* ======================
+           LAYOUT & WRAPPER
+           ====================== */
+    .ud-wrapper {
+        display: flex;
+        gap: 25px;
+        max-width: 1300px;
+        margin: 0 auto;
+        padding: 30px 20px 70px;
+        min-height: calc(100vh - 80px);
+        background: #F3F1E7;
+    }
+
+    /* ======================
+           RIGHT SIDEBAR (MENU) -> এখন বাম পাশে থাকবে
+           ====================== */
+    .ud-sidebar {
+        width: 280px;
+        flex-shrink: 0;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.04);
+        height: fit-content;
+        position: sticky;
+        top: 100px;
+        overflow: hidden;
+        order: -1; /* ✅ মেনুটি বাম পাশে দেখাবে */
+    }
+
+    .ud-profile-header {
+        padding: 30px 20px 20px;
+        text-align: center;
+        border-bottom: 1px solid #F3F1E7;
+        background: linear-gradient(180deg, #F8F9F5 0%, #FFFFFF 100%);
+    }
+
+    .ud-avatar {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #1F3B2C;
+        margin: 0 auto 12px;
+        display: block;
+        box-shadow: 0 4px 12px rgba(31,59,44,0.15);
+        background: #E7E4D9;
+    }
+
+    .ud-name {
+        font-family: 'Georgia', serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1F3B2C;
+        margin: 0 0 4px;
+    }
+
+    .ud-role {
+        font-size: 12px;
+        color: #1565c0;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: #e3f2fd;
+        padding: 4px 12px;
+        border-radius: 20px;
+    }
+
+    .ud-menu {
+        list-style: none;
+        padding: 10px 0;
+        margin: 0;
+    }
+
+        .ud-menu li a {
+            display: flex;
+            align-items: center;
+            padding: 14px 24px;
+            color: #5B6B5E;
+            text-decoration: none;
+            font-size: 14.5px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border-right: 4px solid transparent;
+        }
+
+            .ud-menu li a:hover,
+            .ud-menu li a.active {
+                background: #F8F9F5;
+                color: #1F3B2C;
+                border-right-color: #1F3B2C;
+            }
+
+            .ud-menu li a i {
+                width: 24px;
+                font-size: 16px;
+                margin-right: 12px;
+                color: #8A9188;
+                text-align: center;
+            }
+
+            .ud-menu li a.active i {
+                color: #1F3B2C;
+            }
+
+    /* ======================
+           LEFT MAIN CONTENT -> এখন ডান পাশে থাকবে
+           ====================== */
+    .ud-main {
+        flex: 1;
+        min-width: 0;
+        order: 1; /* ✅ কন্টেন্ট ডান পাশে দেখাবে */
+    }
+
+    /* ======================
+           STATS CARDS
+           ====================== */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+        border: 1px solid rgba(0,0,0,0.04);
+        border-bottom: 4px solid #ccc;
+    }
+
+        .stat-card.posts {
+            border-bottom-color: #3498db;
+        }
+
+        .stat-card.likes {
+            border-bottom-color: #e74c3c;
+        }
+
+        .stat-card.comments {
+            border-bottom-color: #f39c12;
+        }
+
+        .stat-card.teachers {
+            border-bottom-color: #2ecc71;
+        }
+
+    .stat-icon {
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+
+    .stat-card.posts .stat-icon {
+        color: #3498db;
+    }
+
+    .stat-card.likes .stat-icon {
+        color: #e74c3c;
+    }
+
+    .stat-card.comments .stat-icon {
+        color: #f39c12;
+    }
+
+    .stat-card.teachers .stat-icon {
+        color: #2ecc71;
+    }
+
+    .stat-num {
+        font-size: 28px;
+        font-weight: 800;
+        color: #1F3B2C;
+        line-height: 1.1;
+        font-family: 'Georgia', serif;
+    }
+
+    .stat-lbl {
+        font-size: 12.5px;
+        color: #6B7568;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-top: 4px;
+    }
+
+    /* ======================
+           RECENT POSTS LIST
+           ====================== */
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+        .section-header h3 {
+            font-family: 'Georgia', serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1F3B2C;
+            margin: 0;
+        }
+
+    .btn-new-post {
+        background: #1F3B2C;
+        color: white;
+        text-decoration: none;
+        padding: 10px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 13.5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+    }
+
+        .btn-new-post:hover {
+            background: #2d5a42;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+    .post-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .user-post-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.03);
+        border: 1px solid rgba(0,0,0,0.04);
+    }
+
+    .post-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        font-size: 12.5px;
+        color: #8A9188;
+    }
+
+    .post-content {
+        font-size: 14.5px;
+        color: #1F3B2C;
+        line-height: 1.6;
+        margin-bottom: 16px;
+        white-space: pre-wrap;
+    }
+
+    .post-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .post-tag {
+        background: #F3F1E7;
+        color: #1F3B2C;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .post-stats {
+        display: flex;
+        gap: 16px;
+        padding-top: 14px;
+        border-top: 1px dashed #E7E4D9;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: #6B7568;
+    }
+
+        .post-stats i {
+            color: #1F3B2C;
+            margin-right: 4px;
+        }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 16px;
+        border: 2px dashed #E7E4D9;
+    }
+
+        .empty-state i {
+            font-size: 48px;
+            color: #D5CFB8;
+            margin-bottom: 16px;
+        }
+
+        .empty-state h5 {
+            color: #1F3B2C;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            color: #8A9188;
+            font-size: 14px;
+            margin: 0;
+        }
+
+    /* ======================
+           RESPONSIVE
+           ====================== */
+    @@media (max-width: 992px) {
+        .ud-wrapper {
+            flex-direction: column;
+            padding: 20px 15px;
+        }
+
+        .ud-sidebar {
+            width: 100%;
+            position: static;
+            order: -1; /* মোবাইলেও উপরে দেখাবে */
+        }
+
+        .ud-profile-header {
+            display: flex;
+            align-items: center;
+            text-align: left;
+            gap: 15px;
+            padding: 20px;
+        }
+
+        .ud-avatar {
+            width: 70px;
+            height: 70px;
+            margin: 0;
+        }
+
+        .ud-menu {
+            display: flex;
+            overflow-x: auto;
+            padding: 10px;
+        }
+
+            .ud-menu li a {
+                padding: 10px 16px;
+                white-space: nowrap;
+                border-right: none;
+                border-bottom: 3px solid transparent;
+            }
+
+                .ud-menu li a.active {
+                    border-right-color: transparent;
+                    border-bottom-color: #1F3B2C;
+                }
+
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media (max-width: 576px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="ud-wrapper">
+
+    <!-- ====================== LEFT SIDEBAR (MENU) ====================== -->
+    <div class="ud-sidebar">
+        <div class="ud-profile-header">
+            <img src="@(string.IsNullOrEmpty(user?.ProfileImageLink) ? "https://ui-avatars.com/api/?name=" + Uri.EscapeDataString(user?.FullName ?? "User") + "&background=1F3B2C&color=fff&size=120" : user?.ProfileImageLink)"
+                 alt="Profile" class="ud-avatar" />
+            <div>
+                <h3 class="ud-name">@user?.FullName</h3>
+                <span class="ud-role"><i class="fas fa-user-graduate"></i> Student</span>
+            </div>
+        </div>
+
+        <ul class="ud-menu">
+            <li>
+                <a asp-controller="User" asp-action="Dashboard" class="active">
+                    <i class="fas fa-chart-pie"></i> Overview
+                </a>
+            </li>
+            <li>
+                <a asp-controller="Profile" asp-action="Index">
+                    <i class="fas fa-id-card"></i> My Profile
+                </a>
+            </li>
+            <li>
+                <a asp-controller="Tuition" asp-action="Circular">
+                    <i class="fas fa-clipboard-list"></i> Circular Feed
+                </a>
+            </li>
+            <li>
+                <a href="/Helpdesk">
+                    <i class="fas fa-headset"></i> Helpdesk
+                </a>
+            </li>
+            <li>
+                <a href="/Notification/All">
+                    <i class="fas fa-bell"></i> Notifications
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- ====================== RIGHT MAIN CONTENT ====================== -->
+    <div class="ud-main">
+        <div class="section-header">
+            <h3>Welcome back, @(user?.FullName ?? "Student")!</h3>
+            <a href="/Tuition/Circular" class="btn-new-post">
+                <i class="fas fa-plus"></i> New Post
+            </a>
+        </div>
+
+        <!-- STATS GRID -->
+        <div class="stats-grid">
+            <div class="stat-card posts">
+                <i class="fas fa-file-alt stat-icon"></i>
+                <div class="stat-num">@stats.TotalPosts</div>
+                <div class="stat-lbl">Total Posts</div>
+            </div>
+            <div class="stat-card likes">
+                <i class="fas fa-heart stat-icon"></i>
+                <div class="stat-num">@stats.TotalLikes</div>
+                <div class="stat-lbl">Total Likes</div>
+            </div>
+            <div class="stat-card comments">
+                <i class="fas fa-comment-dots stat-icon"></i>
+                <div class="stat-num">@stats.TotalComments</div>
+                <div class="stat-lbl">Total Comments</div>
+            </div>
+            <div class="stat-card teachers">
+                <i class="fas fa-chalkboard-teacher stat-icon"></i>
+                <div class="stat-num">@stats.TotalTeachersConnected</div>
+                <div class="stat-lbl">Teachers Connected</div>
+            </div>
+        </div>
+
+        <!-- RECENT POSTS -->
+        <div class="section-header" style="margin-top: 30px;">
+            <h3>Your Recent Posts</h3>
+        </div>
+
+        <div class="post-feed">
+            @if (!recentPosts.Any())
+            {
+                <div class="empty-state">
+                    <i class="fas fa-file-alt"></i>
+                    <h5>No Posts Yet</h5>
+                    <p>আপনি এখনো কোনো টিউশনের পোস্ট করেননি।</p>
+                    <a href="/Tuition/Circular" class="btn-new-post" style="margin-top: 15px;">
+                        <i class="fas fa-plus"></i> Create Your First Post
+                    </a>
+                </div>
+            }
+            else
+            {
+                foreach (var post in recentPosts)
+                {
+                    <div class="user-post-card">
+                        <div class="post-meta">
+                            <span><i class="far fa-clock"></i> @post.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")</span>
+                            <a href="/Tuition/Circular" style="color: #1F3B2C; font-weight: 600; text-decoration: none;">View on Feed <i class="fas fa-arrow-right"></i></a>
+                        </div>
+
+                        <div class="post-content">@post.Content</div>
+
+                        @if (!string.IsNullOrEmpty(post.PreferredArea) || !string.IsNullOrEmpty(post.ClassLevel) || !string.IsNullOrEmpty(post.Subjects))
+                        {
+                            <div class="post-tags">
+                                @if (!string.IsNullOrEmpty(post.PreferredArea))
+                                {
+                                    <span class="post-tag"><i class="fas fa-map-marker-alt"></i> @post.PreferredArea</span>
+                                }
+                                @if (!string.IsNullOrEmpty(post.ClassLevel))
+                                {
+                                    <span class="post-tag"><i class="fas fa-graduation-cap"></i> @post.ClassLevel</span>
+                                }
+                                @if (!string.IsNullOrEmpty(post.Subjects))
+                                {
+                                    <span class="post-tag"><i class="fas fa-book"></i> @post.Subjects</span>
+                                }
+                                @if (!string.IsNullOrEmpty(post.Budget))
+                                {
+                                    <span class="post-tag" style="background:#d4edda; color:#155724;"><i class="fas fa-money-bill-wave"></i> ৳@post.Budget</span>
+                                }
+                            </div>
+                        }
+
+                        <div class="post-stats">
+                            <span><i class="fas fa-thumbs-up"></i> @post.LikeCount Likes</span>
+                            <span><i class="fas fa-comment"></i> @post.Comments.Sum(c => 1 + c.Replies.Count) Comments</span>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+</div>

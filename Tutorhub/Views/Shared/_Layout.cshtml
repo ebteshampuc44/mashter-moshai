@@ -22,7 +22,10 @@
     var safeSiteName = layoutSettings.GetSafeSiteName();
     var navbarLogo = layoutSettings.GetNavbarLogo();
     var footerLogo = layoutSettings.GetFooterLogo();
-    var safeLogoSize = layoutSettings.GetSafeLogoSize();
+
+    // ✅ লোগোর সাইজ অ্যাডমিন প্যানেল থেকে নিবে, তবে নেভবার ভাঙা রুখতে সর্বোচ্চ ৫০px লিমিট দেওয়া হলো
+    var safeLogoSize = Math.Min(layoutSettings.GetSafeLogoSize(), 50);
+
     var logoRadius = layoutSettings.GetLogoBorderRadius();
 }
 <!DOCTYPE html>
@@ -655,18 +658,38 @@
                     }
             }
 
-            /* ===== ✅ Logo (Dynamic size/shape from settings) ===== */
-            .brand-logo {
-                width: @(safeLogoSize)px;
-                height: @(safeLogoSize)px;
-                object-fit: cover;
+            /* ===== ✅ Logo Container Box (Fixed) ===== */
+            .brand-logo-box {
+                width: @(safeLogoSize) px;
+                height: @(safeLogoSize) px;
+                min-width: @(safeLogoSize) px;
+                min-height: @(safeLogoSize) px;
+                max-width: @(safeLogoSize) px;
+                max-height: @(safeLogoSize) px;
                 border-radius: @(logoRadius);
+                overflow: hidden;
                 flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background-color: #fff;
+                border: 1px solid rgba(0,0,0,0.05);
                 transition: transform 0.2s ease;
+                padding: 2px;
+                box-sizing: border-box;
             }
 
-                .brand-logo:hover {
+                .brand-logo-box:hover {
                     transform: scale(1.04);
+                }
+
+                .brand-logo-box img {
+                    display: block;
+                    width: 100%;
+                    height: 100%;
+                    max-width: 100%;
+                    max-height: 100%;
+                    object-fit: contain;
                 }
 
             .brand-site-name {
@@ -679,13 +702,34 @@
                 max-width: 220px;
             }
 
-            .footer-brand-logo {
-                width: @(safeLogoSize)px;
-                height: @(safeLogoSize)px;
-                object-fit: cover;
+            /* ফুটারের জন্যও একই বক্স */
+            .footer-brand-logo-box {
+                width: @(safeLogoSize) px;
+                height: @(safeLogoSize) px;
+                min-width: @(safeLogoSize) px;
+                min-height: @(safeLogoSize) px;
+                max-width: @(safeLogoSize) px;
+                max-height: @(safeLogoSize) px;
                 border-radius: @(logoRadius);
+                overflow: hidden;
                 flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background-color: #fff;
+                border: 1px solid rgba(0,0,0,0.05);
+                padding: 2px;
+                box-sizing: border-box;
             }
+
+                .footer-brand-logo-box img {
+                    display: block;
+                    width: 100%;
+                    height: 100%;
+                    max-width: 100%;
+                    max-height: 100%;
+                    object-fit: contain;
+                }
 
             @@media (max-width: 768px) {
                 .brand-site-name {
@@ -709,11 +753,15 @@
                 <!-- ✅ Logo + Site Name (Dynamic) -->
                 <div class="flex-shrink-0">
                     <a asp-controller="Home" asp-action="Index" class="flex items-center gap-2.5">
-                        <img src="@navbarLogo"
-                             alt="@safeSiteName logo"
-                             class="brand-logo" />
-                        <span class="brand-site-name hidden sm:inline font-serif"
-                              style="font-size:16px;">
+                        <!-- Logo Box -->
+                        <div class="brand-logo-box"
+                             style="width:@(safeLogoSize)px !important; height:@(safeLogoSize)px !important; min-width:@(safeLogoSize)px !important; max-width:@(safeLogoSize)px !important; min-height:@(safeLogoSize)px !important; max-height:@(safeLogoSize)px !important; overflow:hidden; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <img src="@navbarLogo"
+                                 alt="@safeSiteName logo"
+                                 style="width:100% !important; height:100% !important; max-width:100% !important; max-height:100% !important; object-fit:contain !important; display:block;" />
+                        </div>
+
+                        <span class="brand-site-name hidden sm:inline font-serif" style="font-size:16px;">
                             @safeSiteName
                         </span>
                     </a>
@@ -794,7 +842,17 @@
                                         <i class="fas fa-id-card"></i> My Profile
                                     </a>
                                 </li>
-                                
+
+                                @if (userRole == "User" || userRole == "Admin")
+                                {
+                                    <li>
+                                        <a class="dropdown-item" asp-controller="User" asp-action="Dashboard">
+                                            <i class="fas fa-chart-pie"></i> Student Dashboard
+                                            <span class="badge-role" style="background:#e3f2fd; color:#1565c0;">Student</span>
+                                        </a>
+                                    </li>
+                                }
+
                                 @if (isTeacher)
                                 {
                                     <li>
@@ -893,6 +951,13 @@
                                 <i class="fas fa-id-card me-2"></i> My Profile
                             </a>
 
+                            @if (userRoleMobile == "User" || userRoleMobile == "Admin")
+                            {
+                                <a asp-controller="User" asp-action="Dashboard" class="text-sm font-medium" style="color:var(--primary-color);">
+                                    <i class="fas fa-chart-pie me-2"></i> Student Dashboard
+                                </a>
+                            }
+
                             @if (isTeacherMobile)
                             {
                                 <a asp-controller="Teacher" asp-action="TeacherDashboard" class="text-sm font-medium" style="color:var(--primary-color);">
@@ -948,9 +1013,13 @@
 
                     <div class="flex items-start gap-2.5 text-center sm:text-left">
                         <!-- ✅ Footer Logo (Dynamic) -->
-                        <img src="@footerLogo"
-                             alt="@safeSiteName logo"
-                             class="footer-brand-logo" />
+                        <div class="footer-brand-logo-box"
+                             style="width:@(safeLogoSize)px !important; height:@(safeLogoSize)px !important; min-width:@(safeLogoSize)px !important; max-width:@(safeLogoSize)px !important; min-height:@(safeLogoSize)px !important; max-height:@(safeLogoSize)px !important; overflow:hidden; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <img src="@footerLogo"
+                                 alt="@safeSiteName logo"
+                                 style="width:100% !important; height:100% !important; max-width:100% !important; max-height:100% !important; object-fit:contain !important; display:block;" />
+                        </div>
+
                         <div>
                             <p class="font-serif text-base sm:text-lg font-bold tracking-wide" style="color:var(--primary-color);">
                                 @safeSiteName
@@ -1144,10 +1213,10 @@
                         .then(data => {
                             if (!data.success || !data.notifications || data.notifications.length === 0) {
                                 list.innerHTML = `
-                                                        <div class="notif-empty">
-                                                            <i class="fas fa-bell-slash"></i>
-                                                            <p>No notifications yet</p>
-                                                        </div>`;
+                                                <div class="notif-empty">
+                                                    <i class="fas fa-bell-slash"></i>
+                                                    <p>No notifications yet</p>
+                                                </div>`;
                                 return;
                             }
 
@@ -1159,16 +1228,16 @@
                                 const linkAttr = n.link ? `data-link="${n.link}"` : '';
 
                                 html += `
-                                                        <div class="notif-item ${unreadClass}" ${linkAttr} data-id="${n.id}">
-                                                            <div class="notif-icon ${typeClass}">
-                                                                <i class="fas ${icon}"></i>
-                                                            </div>
-                                                            <div class="notif-content">
-                                                                <p class="notif-title">${escapeHtml(n.title)}</p>
-                                                                <p class="notif-message">${escapeHtml(n.message)}</p>
-                                                                <span class="notif-time"><i class="far fa-clock me-1"></i>${n.timeAgo}</span>
-                                                            </div>
-                                                        </div>`;
+                                                <div class="notif-item ${unreadClass}" ${linkAttr} data-id="${n.id}">
+                                                    <div class="notif-icon ${typeClass}">
+                                                        <i class="fas ${icon}"></i>
+                                                    </div>
+                                                    <div class="notif-content">
+                                                        <p class="notif-title">${escapeHtml(n.title)}</p>
+                                                        <p class="notif-message">${escapeHtml(n.message)}</p>
+                                                        <span class="notif-time"><i class="far fa-clock me-1"></i>${n.timeAgo}</span>
+                                                    </div>
+                                                </div>`;
                             });
 
                             list.innerHTML = html;

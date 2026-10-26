@@ -1,32 +1,74 @@
 ﻿@model List<Tutorbub.Models.TuitionPost>
+@using Microsoft.AspNetCore.Http
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 @{
     ViewData["Title"] = "Tuition Circular - Smart Tutor Hub";
     Layout = "_Layout";
     var isLoggedIn = Context.Session.GetString("UserName") != null;
+    var userRole = Context.Session.GetString("UserRole");
+    var isTeacher = userRole == "Teacher";
+
+    var userId = Context.Session.GetString("UserId");
+    var userFullName = Context.Session.GetString("UserFullName") ?? Context.Session.GetString("UserName") ?? "User";
+    var userProfileImg = Context.Session.GetString("ProfileImageLink");
+
+    var feedPosts = new List<Tutorbub.Models.TuitionCircularPost>();
+    try
+    {
+        var dbHelper = new Tutorbub.Models.DatabaseHelper(Configuration);
+        feedPosts = dbHelper.GetAllTuitionCircularPosts(userId);
+    }
+    catch (Exception ex) { Console.WriteLine(ex.Message); }
 }
+
+@functions {
+    private Microsoft.AspNetCore.Html.IHtmlContent RenderCommentText(string? text)
+    {
+        text ??= "";
+        var m = System.Text.RegularExpressions.Regex.Match(text, @"^@\[([^\]]+)\]\s?");
+        if (m.Success)
+        {
+            var rest = text.Substring(m.Length);
+            return new Microsoft.AspNetCore.Html.HtmlString(
+                "<span class=\"fbc-mention\">" + System.Net.WebUtility.HtmlEncode(m.Groups[1].Value) + "</span> "
+                + System.Net.WebUtility.HtmlEncode(rest));
+        }
+        return new Microsoft.AspNetCore.Html.HtmlString(System.Net.WebUtility.HtmlEncode(text));
+    }
+
+    private static string CommentIso(DateTime dt) =>
+        dt.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "Z";
+}
+
+@Html.AntiForgeryToken()
 
 <style>
     /* ======================
-                   PAGE WRAPPER
-                   ====================== */
+           PAGE WRAPPER & LAYOUT
+           ====================== */
     .tc-page {
         background: #F3F1E7;
         padding: 40px 20px 70px;
         min-height: 80vh;
     }
 
-    .tc-container {
-        max-width: 1200px;
+    .tc-layout {
+        max-width: 1150px;
         margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 30px;
+        align-items: start;
     }
 
     /* ======================
-                   HEADER
-                   ====================== */
+           HEADER
+           ====================== */
     .tc-header {
         text-align: center;
         margin-bottom: 30px;
+        grid-column: 1 / -1;
     }
 
         .tc-header h1 {
@@ -35,6 +77,10 @@
             font-weight: 700;
             color: #1F3B2C;
             margin: 0 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
         }
 
         .tc-header p {
@@ -46,354 +92,765 @@
         }
 
     /* ======================
-                   SEARCH BAR
-                   ====================== */
-    .tc-search {
-        max-width: 640px;
-        margin: 24px auto 0;
-        display: flex;
-        gap: 10px;
+           POST CREATE BOX (FindTutor Style)
+           ====================== */
+    .post-create-card {
         background: white;
-        padding: 6px 6px 6px 22px;
-        border-radius: 50px;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.04);
+        margin-bottom: 24px;
+    }
+
+    .post-create-top {
+        display: flex;
+        gap: 14px;
         align-items: center;
-        box-shadow: 0 8px 30px rgba(31,59,44,0.08);
-        border: 2px solid transparent;
-        transition: border-color 0.3s;
     }
 
-        .tc-search:focus-within {
-            border-color: #1F3B2C;
-        }
-
-        .tc-search i.fa-search {
-            color: #8A9188;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-
-        .tc-search input {
-            flex: 1;
-            border: none;
-            outline: none;
-            font-size: 14.5px;
-            padding: 11px 0;
-            background: transparent;
-            color: #1F3B2C;
-            min-width: 0;
-        }
-
-        .tc-search button {
-            background: #1F3B2C;
-            color: white;
-            border: none;
-            padding: 11px 24px;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 13.5px;
-            cursor: pointer;
-            transition: opacity 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            flex-shrink: 0;
-        }
-
-            .tc-search button:hover {
-                opacity: 0.88;
-            }
-
-    /* ======================
-                   STATS BAR
-                   ====================== */
-    .tc-stats {
+    .pc-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1F3B2C, #2d5a42);
+        color: white;
         display: flex;
+        align-items: center;
         justify-content: center;
-        gap: 16px;
-        flex-wrap: wrap;
-        margin-bottom: 28px;
+        font-weight: 700;
+        font-size: 16px;
+        flex-shrink: 0;
+        overflow: hidden;
     }
 
-    .tc-stat-pill {
-        background: white;
+        .pc-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+    .pc-input {
+        flex: 1;
+        background: #F3F1E7;
+        border: none;
         border-radius: 30px;
-        padding: 10px 22px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        padding: 14px 20px;
+        font-size: 14.5px;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #5B6B5E;
+        text-align: left;
+    }
+
+        .pc-input:hover {
+            background: #E7E4D9;
+        }
+
+    .post-create-actions {
         display: flex;
+        justify-content: space-around;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .pc-action-btn {
+        display: inline-flex;
         align-items: center;
         gap: 8px;
+        background: none;
+        border: none;
+        color: #6B7568;
         font-weight: 600;
-        color: #1F3B2C;
-        font-size: 14px;
+        font-size: 13.5px;
+        cursor: pointer;
+        padding: 8px 12px;
+        border-radius: 8px;
+        transition: background 0.2s;
     }
 
-        .tc-stat-pill i {
-            color: #1F3B2C;
+        .pc-action-btn:hover {
+            background: #F3F1E7;
+        }
+
+        .pc-action-btn i.fa-images {
+            color: #2ecc71;
+        }
+
+        .pc-action-btn i.fa-video {
+            color: #e74c3c;
         }
 
     /* ======================
-                   GRID
-                   ====================== */
-    .tc-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-        gap: 22px;
-        align-items: start;
+           POST FEED
+           ====================== */
+    .post-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        margin-bottom: 40px;
     }
 
-    /* ======================
-                   CARD
-                   ====================== */
-    .tc-card {
+    .fb-post {
         background: white;
-        border-radius: 18px;
-        padding: 26px 24px 22px;
-        border: 1px solid rgba(0,0,0,0.05);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.05);
-        transition: all 0.3s;
+        border-radius: 16px;
+        border: 1px solid rgba(0,0,0,0.06);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        overflow: hidden;
+    }
+
+    .fb-post-header {
+        padding: 16px 20px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .fb-post-user {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .fb-post-user-info h6 {
+        margin: 0 0 2px;
+        font-weight: 700;
+        color: #1F3B2C;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .fb-post-user-info .time {
+        font-size: 12.5px;
+        color: #8A9188;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .fb-post-content {
+        padding: 0 20px 16px;
+        font-size: 14.5px;
+        color: #1F3B2C;
+        line-height: 1.6;
+        white-space: pre-wrap;
+    }
+
+    .fb-post-media img {
+        width: 100%;
+        max-height: 400px;
+        object-fit: cover;
+        border-top: 1px solid #f0f0f0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .fb-post-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 20px 12px;
+    }
+
+    .fb-tag {
+        background: #F3F1E7;
+        color: #1F3B2C;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .fb-post-stats {
+        padding: 10px 20px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        color: #6B7568;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .fb-post-actions {
+        display: flex;
+        padding: 4px;
+        flex-wrap: wrap;
+    }
+
+    .fb-action-btn {
+        flex: 1;
+        background: none;
+        border: none;
+        padding: 8px;
+        border-radius: 8px;
+        color: #6B7568;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: background 0.2s;
+    }
+
+        .fb-action-btn:hover {
+            background: #F3F1E7;
+        }
+
+    .apply-btn {
+        flex: 1;
+        background: #1F3B2C;
+        color: white;
+        margin: 0 8px 8px 8px;
+        border-radius: 8px;
+        padding: 10px;
+        font-weight: 700;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+        .apply-btn:hover {
+            background: #2d5a42;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+    /* ======================
+           COMMENTS AREA (Facebook Style)
+           ====================== */
+    .fb-comments-area {
+        padding: 10px 16px 14px;
+        background: #fff;
+        display: none;
+        border-top: 1px solid #eceae0;
+    }
+
+        .fb-comments-area.show {
+            display: block;
+        }
+
+    .fb-comment-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .fbc {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .fbc-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #1F3B2C;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 700;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+        .fbc-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+    .fbc.is-reply .fbc-avatar,
+    .fbc-replybox .fbc-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 11px;
+    }
+
+    .fbc-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .fbc-bubble {
         position: relative;
+        display: inline-block;
+        max-width: 100%;
+        background: #F0F2F5;
+        border-radius: 18px;
+        padding: 8px 12px;
+        box-sizing: border-box;
+    }
+
+        .fbc-bubble.has-likes {
+            margin-bottom: 8px;
+        }
+
+    .fbc-name {
+        display: block;
+        font-weight: 600;
+        font-size: 13px;
+        color: #1c1e21;
+        line-height: 1.3;
+    }
+
+    .fbc-text {
+        font-size: 14.5px;
+        line-height: 1.35;
+        color: #1c1e21;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    .fbc-mention {
+        color: #1877F2;
+        font-weight: 500;
+    }
+
+    .fbc-like-badge {
+        position: absolute;
+        right: -10px;
+        bottom: -10px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.3);
+        padding: 1px 7px 1px 2px;
+        font-size: 12px;
+        color: #65676b;
+        line-height: 1.4;
+    }
+
+        .fbc-like-badge.zero {
+            display: none;
+        }
+
+        .fbc-like-badge i {
+            background: #1877F2;
+            color: #fff;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            font-size: 8.5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+    .fbc-meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 2px 12px 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #65676b;
+    }
+
+        .fbc-meta button {
+            background: none;
+            border: none;
+            padding: 0;
+            font: inherit;
+            color: inherit;
+            cursor: pointer;
+        }
+
+            .fbc-meta button:hover {
+                text-decoration: underline;
+            }
+
+        .fbc-meta .fbc-like-btn.liked {
+            color: #1877F2;
+        }
+
+        .fbc-meta .fbc-time {
+            font-weight: 400;
+            cursor: default;
+        }
+
+    .fbc-view-replies {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: none;
+        border: none;
+        padding: 6px 12px 2px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #65676b;
+        cursor: pointer;
+    }
+
+        .fbc-view-replies:hover {
+            text-decoration: underline;
+        }
+
+        .fbc-view-replies i {
+            font-size: 11px;
+        }
+
+    .fbc-replies {
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    .fbc-input-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .fbc-pill {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #F0F2F5;
+        border-radius: 20px;
+        padding: 4px 6px 4px 14px;
+    }
+
+        .fbc-pill input {
+            flex: 1;
+            min-width: 0;
+            border: none;
+            background: transparent;
+            outline: none;
+            font-size: 14px;
+            padding: 6px 0;
+            color: #1c1e21;
+        }
+
+    .fbc-mention-tag {
+        color: #1877F2;
+        font-weight: 500;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+
+    .fbc-send {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: #1877F2;
+        cursor: pointer;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .fbc-send:hover {
+            background: #e4e6eb;
+        }
+
+        .fbc-send:disabled {
+            color: #bcc0c4;
+            cursor: default;
+        }
+
+    /* ======================
+           MODAL STYLES (FindTutor Style)
+           ====================== */
+    .modal-content {
+        border-radius: 16px;
+        border: none;
+    }
+
+    .modal-header {
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .modal-title {
+        font-weight: 700;
+        color: #1F3B2C;
+        font-size: 18px;
+    }
+
+    .modal-textarea {
+        width: 100%;
+        border: none;
+        outline: none;
+        font-size: 18px;
+        resize: none;
+        min-height: 100px;
+        margin-top: 10px;
+        color: #1F3B2C;
+    }
+
+        .modal-textarea::placeholder {
+            color: #8A9188;
+        }
+
+    .modal-preview {
+        margin-top: 15px;
+        display: none;
+        position: relative;
+    }
+
+        .modal-preview img {
+            width: 100%;
+            border-radius: 12px;
+            max-height: 300px;
+            object-fit: cover;
+        }
+
+    .remove-preview {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: white;
+        border: none;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        cursor: pointer;
+    }
+
+    .modal-actions-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 15px;
+        padding: 10px;
+        border: 1px solid #E5E1D3;
+        border-radius: 12px;
+    }
+
+    .icon-btn {
+        background: none;
+        border: none;
+        font-size: 18px;
+        color: #8A9188;
+        cursor: pointer;
+        padding: 5px;
+    }
+
+        .icon-btn:hover {
+            color: #1F3B2C;
+        }
+
+    .btn-post {
+        background: #1F3B2C;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-weight: 600;
+        width: 100%;
+        margin-top: 15px;
+        transition: opacity 0.2s;
+    }
+
+        .btn-post:hover {
+            opacity: 0.9;
+        }
+
+        .btn-post:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+    /* Admin Circular section (Old Style) */
+    .admin-circular-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 20px;
+    }
+
+    .ac-card {
+        background: white;
+        border-radius: 14px;
+        padding: 22px;
+        border: 1px solid #eee;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.05);
         display: flex;
         flex-direction: column;
     }
 
-        .tc-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 34px rgba(31,59,44,0.12);
-            border-color: rgba(31,59,44,0.2);
-        }
-
     /* ======================
-                   BADGE ROW (Code + Preference)
-                   ====================== */
-    .tc-badge-row {
+           RIGHT SIDEBAR (Promo)
+           ====================== */
+    .tc-sidebar {
+        position: sticky;
+        top: 100px;
         display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 10px;
-        margin-bottom: 10px;
+        flex-direction: column;
+        gap: 20px;
     }
 
-    /* Code Badge */
-    .tc-code-badge {
-        background: #1F3B2C;
-        color: #F4C744;
-        padding: 5px 14px;
-        border-radius: 20px;
-        font-size: 11.5px;
-        font-weight: 800;
-        font-family: 'Courier New', monospace;
-        letter-spacing: 0.5px;
-        white-space: nowrap;
-        max-width: 55%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        flex-shrink: 0;
-    }
-
-    /* Tutor Preference Badge */
-    .tc-pref-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        background: #FCEACB;
-        color: #8a5a00;
-        max-width: 60%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-        .tc-pref-badge.male {
-            background: #cfe2ff;
-            color: #084298;
-        }
-
-        .tc-pref-badge.any {
-            background: #D9EDDF;
-            color: #1F3B2C;
-        }
-
-    /* Title */
-    .tc-card h3 {
-        font-size: 18px;
-        font-weight: 700;
-        color: #1F3B2C;
-        margin: 0 0 18px;
-        line-height: 1.4;
-        font-family: 'Georgia', serif;
-    }
-
-    /* ======================
-                   INFO GRID (Aligned)
-                   ====================== */
-    .tc-info-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px 20px;
-        margin-bottom: 16px;
-        align-items: start;
-        grid-auto-rows: min-content;
-    }
-
-    .tc-info-item {
-        font-size: 13.5px;
-        color: #5B6B5E;
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-        line-height: 1.55;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-    }
-
-        .tc-info-item i {
-            color: #1F3B2C;
-            font-size: 13px;
-            margin-top: 4px;
-            flex-shrink: 0;
-            width: 16px;
-            text-align: center;
-            line-height: 1;
-        }
-
-        .tc-info-item span {
-            flex: 1;
-            min-width: 0;
-            word-break: break-word;
-        }
-
-            .tc-info-item span strong {
-                color: #1F3B2C;
-                font-weight: 700;
-                margin-right: 4px;
-            }
-
-        .tc-info-item.full {
-            grid-column: 1 / -1;
-            align-self: start;
-        }
-
-    /* Salary Highlight */
-    .tc-salary {
-        background: #d4edda;
-        color: #155724 !important;
-        padding: 10px 14px;
-        border-radius: 10px;
-        font-weight: 700;
-        grid-column: 1 / -1;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 4px;
-    }
-
-        .tc-salary i {
-            color: #155724;
-            flex-shrink: 0;
-        }
-
-    /* Special Note */
-    .tc-note {
-        background: #FFF9E6;
-        border-radius: 12px;
-        padding: 14px 16px;
-        margin-bottom: 18px;
-        font-size: 13px;
-        color: #5B6B5E;
-        line-height: 1.65;
-        border-left: 4px solid #F4C744;
-        white-space: pre-line;
-        word-break: break-word;
-    }
-
-        .tc-note strong {
-            color: #8a5a00;
-            display: block;
-            margin-bottom: 4px;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-        }
-
-    /* Apply Button */
-    .tc-btn-apply {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 13px;
-        background: #1F3B2C;
-        color: white;
-        border-radius: 12px;
-        font-weight: 700;
-        font-size: 14px;
-        text-decoration: none;
-        transition: all 0.25s;
-        margin-top: auto;
-        border: none;
-        cursor: pointer;
-    }
-
-        .tc-btn-apply:hover {
-            background: #2d5a42;
-            color: white;
-            transform: translateY(-1px);
-            box-shadow: 0 6px 18px rgba(31,59,44,0.25);
-        }
-
-        /* Locked Apply Button (when not logged in) */
-        .tc-btn-apply.locked {
-            background: #8A9188;
-            cursor: pointer;
-        }
-
-            .tc-btn-apply.locked:hover {
-                background: #6B7568;
-                box-shadow: 0 6px 18px rgba(138,145,136,0.35);
-            }
-
-    /* ======================
-                   EMPTY STATE
-                   ====================== */
-    .tc-empty {
+    .sidebar-card {
         background: white;
         border-radius: 18px;
-        padding: 70px 26px;
-        text-align: center;
+        padding: 24px;
         box-shadow: 0 4px 20px rgba(0,0,0,0.05);
         border: 1px solid rgba(0,0,0,0.04);
     }
 
-        .tc-empty i {
-            font-size: 60px;
-            color: #E7E4D9;
-            display: block;
-            margin-bottom: 18px;
-        }
-
-        .tc-empty h4 {
-            color: #1F3B2C;
+        .sidebar-card h3 {
+            font-family: 'Georgia', serif;
             font-size: 20px;
             font-weight: 700;
+            color: #1F3B2C;
             margin: 0 0 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .tc-empty p {
+        .sidebar-card p {
+            font-size: 13.5px;
             color: #6B7568;
-            font-size: 14.5px;
-            margin: 0;
             line-height: 1.6;
+            margin: 0 0 16px;
+        }
+
+    .sidebar-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+        .sidebar-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 13.5px;
+            color: #4B5648;
+            line-height: 1.5;
+        }
+
+            .sidebar-list li i {
+                color: #2ecc71;
+                font-size: 14px;
+                margin-top: 3px;
+            }
+
+    .sidebar-btn {
+        width: 100%;
+        background: #1F3B2C;
+        color: white;
+        border: none;
+        padding: 12px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        text-decoration: none;
+    }
+
+        .sidebar-btn:hover {
+            background: #2d5a42;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(31,59,44,0.2);
+        }
+
+    .promo-card {
+        background: linear-gradient(145deg, #1F3B2C 0%, #2d5a42 100%);
+        color: white;
+        border-radius: 18px;
+        padding: 28px 24px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 10px 34px rgba(31,59,44,0.25);
+    }
+
+        .promo-card::before {
+            content: '';
+            position: absolute;
+            top: -60px;
+            right: -60px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(244,199,68,0.18) 0%, transparent 65%);
+            border-radius: 50%;
+        }
+
+        .promo-card h3 {
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        .promo-card p {
+            color: #D6DED5;
+            margin-bottom: 20px;
+        }
+
+    .promo-btn {
+        width: 100%;
+        background: #F4C744;
+        color: #1F3B2C;
+        border: none;
+        padding: 13px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.25s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+        .promo-btn:hover {
+            background: #E8B92E;
+            transform: translateY(-1px);
         }
 
     /* ======================
-                   RESPONSIVE
-                   ====================== */
+           RESPONSIVE
+           ====================== */
+    @@media (max-width: 992px) {
+        .tc-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .tc-sidebar {
+            position: static;
+            order: -1; /* উপরে দেখাবে মোবাইলে */
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .promo-card {
+            grid-column: 1 / -1;
+        }
+    }
+
     @@media (max-width: 640px) {
         .tc-page {
             padding: 26px 14px 60px;
@@ -403,256 +860,729 @@
             font-size: 26px;
         }
 
-        .tc-header p {
-            font-size: 14px;
-        }
-
-        .tc-search {
-            flex-direction: column;
-            padding: 12px;
-            border-radius: 16px;
-        }
-
-            .tc-search button {
-                width: 100%;
-                justify-content: center;
-            }
-
-            .tc-search input {
-                text-align: center;
-                padding: 10px 0;
-            }
-
-        .tc-grid {
+        .admin-circular-grid {
             grid-template-columns: 1fr;
         }
 
-        .tc-info-grid {
+        .tc-sidebar {
             grid-template-columns: 1fr;
-        }
-
-        .tc-badge-row {
-            flex-wrap: wrap;
-        }
-
-        .tc-code-badge,
-        .tc-pref-badge {
-            max-width: 100%;
         }
     }
 </style>
 
 <div class="tc-page">
-    <div class="tc-container">
+    <div class="tc-layout">
 
-        <!-- ======================
-             HEADER
-             ====================== -->
+        <!-- ====================== HEADER ====================== -->
         <div class="tc-header">
-            <h1>📢 Tuition Circular</h1>
+            <h1>
+                <!-- SVG Megaphone Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#1F3B2C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m3 11 18-5v12L3 14v-3z"></path>
+                    <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path>
+                </svg>
+                Tuition Circular
+            </h1>
             <p>
-                নিচে সব Open Tuition Post দেওয়া আছে। আপনার পছন্দের টিউশনে <strong>Apply</strong>
-                করুন এবং Admin এর সাথে যোগাযোগ করুন।
+                স্টুডেন্টরা তাদের প্রয়োজন পোস্ট করতে পারবে। টিচাররা পোস্টে Apply করতে পারবে এবং একে অপরের সাথে কমেন্টে কথা বলতে পারবে।
             </p>
-
-            <form method="get" asp-controller="Tuition" asp-action="Circular">
-                <div class="tc-search">
-                    <i class="fas fa-search"></i>
-                    <input type="text" name="search" value="@ViewBag.SearchQuery"
-                           placeholder="Search by area, subject, class or code..." />
-                    <button type="submit">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                </div>
-            </form>
         </div>
 
-        <!-- ======================
-             ALERTS
-             ====================== -->
-        @if (TempData["Success"] != null)
-        {
-            <div class="alert alert-success" style="border-radius:10px; max-width:700px; margin:0 auto 20px;">
-                <i class="fas fa-check-circle me-2"></i>@TempData["Success"]
-            </div>
-        }
-        @if (TempData["Error"] != null)
-        {
-            <div class="alert alert-danger" style="border-radius:10px; max-width:700px; margin:0 auto 20px;">
-                <i class="fas fa-exclamation-circle me-2"></i>@TempData["Error"]
-            </div>
-        }
+        <!-- ====================== MAIN CONTENT (LEFT) ====================== -->
+        <div class="tc-main-content">
 
-        <!-- ======================
-             STATS BAR
-             ====================== -->
-        <div class="tc-stats">
-            <div class="tc-stat-pill">
-                <i class="fas fa-bullhorn"></i>
-                @Model.Count Open Tuition@(Model.Count != 1 ? "s" : "")
-            </div>
-            <div class="tc-stat-pill">
-                <i class="fas fa-check-circle" style="color:#2ecc71;"></i>
-                Admin Verified
-            </div>
-            <div class="tc-stat-pill">
-                <i class="fas fa-shield-alt"></i>
-                Free to Apply
-            </div>
-        </div>
-
-        <!-- ======================
-             POSTS GRID
-             ====================== -->
-        @if (Model == null || Model.Count == 0)
-        {
-            <div class="tc-empty">
-                <i class="fas fa-clipboard-list"></i>
-                <h4>No Tuition Posts Available</h4>
-                <p>
-                    বর্তমানে কোনো Open Tuition নেই।<br />
-                    কিছুক্ষণ পর আবার চেক করুন।
-                </p>
-            </div>
-        }
-        else
-        {
-            <div class="tc-grid">
-                @foreach (var post in Model)
-                {
-                    var prefClass = "any";
-                    if (!string.IsNullOrEmpty(post.TutorGenderPreference))
-                    {
-                        if (post.TutorGenderPreference.Contains("Female", StringComparison.OrdinalIgnoreCase))
-                            prefClass = "";
-                        else if (post.TutorGenderPreference.Contains("Male", StringComparison.OrdinalIgnoreCase))
-                            prefClass = "male";
-                    }
-
-                    <div class="tc-card">
-
-                        <!-- Badge Row: Preference (left) + Code (right) -->
-                        <div class="tc-badge-row">
-                            @if (!string.IsNullOrEmpty(post.TutorGenderPreference))
+            <!-- POST CREATE BOX -->
+            @if (isLoggedIn)
+            {
+                <div class="post-create-card">
+                    <div class="post-create-top">
+                        <div class="pc-avatar">
+                            @if (!string.IsNullOrEmpty(userProfileImg))
                             {
-                                <span class="tc-pref-badge @prefClass" title="@post.TutorGenderPreference">
-                                    <i class="fas fa-user-tie"></i> @post.TutorGenderPreference
-                                </span>
+                                <img src="@userProfileImg" alt="me" />
                             }
                             else
                             {
-                                <span></span>
-                            }
 
-                            @if (!string.IsNullOrEmpty(post.TuitionCode))
-                            {
-                                <div class="tc-code-badge" title="@post.TuitionCode">@post.TuitionCode</div>
+                                @(userFullName.Length > 0 ? userFullName.Substring(0, 1).ToUpper() : "U")
                             }
                         </div>
-
-                        <!-- Title -->
-                        <h3>@post.Title</h3>
-
-                        <!-- Info Grid -->
-                        <div class="tc-info-grid">
-
-                            @if (!string.IsNullOrEmpty(post.StudentGender))
-                            {
-                                <div class="tc-info-item">
-                                    <i class="fas fa-venus-mars"></i>
-                                    <span><strong>Students:</strong> @post.StudentGender</span>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(post.StudentClass))
-                            {
-                                <div class="tc-info-item">
-                                    <i class="fas fa-graduation-cap"></i>
-                                    <span><strong>Class:</strong> @post.StudentClass</span>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(post.Subjects))
-                            {
-                                <div class="tc-info-item">
-                                    <i class="fas fa-book"></i>
-                                    <span><strong>Subjects:</strong> @post.Subjects</span>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(post.DaysPerWeek))
-                            {
-                                <div class="tc-info-item">
-                                    <i class="fas fa-calendar-week"></i>
-                                    <span><strong>Days:</strong> @post.DaysPerWeek per week</span>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(post.PreferredTime))
-                            {
-                                <div class="tc-info-item">
-                                    <i class="fas fa-clock"></i>
-                                    <span><strong>Time:</strong> @post.PreferredTime</span>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(post.Area))
-                            {
-                                <div class="tc-info-item full">
-                                    <i class="fas fa-map-marker-alt"></i>
-                                    <span><strong>Area:</strong> @post.Area</span>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(post.MediaFee))
-                            {
-                                <div class="tc-info-item full">
-                                    <i class="fas fa-percentage"></i>
-                                    <span><strong>Media Fee:</strong> @post.MediaFee</span>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(post.Salary))
-                            {
-                                <div class="tc-salary">
-                                    <i class="fas fa-money-bill-wave"></i>
-                                    <span><strong>Salary:</strong> ৳ @post.Salary /month</span>
-                                </div>
-                            }
-
+                        <div class="pc-input" onclick="openCircularPostModal()">
+                            পোস্ট করুন, আপনার টিউশনের প্রয়োজনীয়তা...
                         </div>
+                    </div>
+                    <div class="post-create-actions">
+                        <button class="pc-action-btn" onclick="openCircularPostModal()">
+                            <i class="fas fa-images fa-lg"></i> Photo
+                        </button>
+                        <button class="pc-action-btn" onclick="openCircularPostModal()">
+                            <i class="fas fa-video fa-lg"></i> Video
+                        </button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="post-create-card" style="text-align: center; padding: 15px; background: #FFF9E6; border-color: #F4C744;">
+                    <p style="margin: 0; font-size: 14px; color: #8a5a00;">
+                        <i class="fas fa-info-circle me-1"></i> পোস্ট করতে এবং কমেন্ট করতে অনুগ্রহ করে <a href="/Account/Login" style="font-weight:bold; text-decoration:underline; color:#1F3B2C;">লগইন করুন</a>।
+                    </p>
+                </div>
+            }
 
-                        <!-- Special Note -->
-                        @if (!string.IsNullOrEmpty(post.SpecialNote))
-                        {
-                            <div class="tc-note">
-                                <strong>বিঃদ্রঃ</strong>
-                                @post.SpecialNote
-                            </div>
-                        }
-
-                        <!-- ======================
-                             APPLY BUTTON (Login-aware)
-                             ====================== -->
-                        @if (isLoggedIn)
-                        {
-                            <a href="/Tuition/Apply/@post.Id" class="tc-btn-apply">
-                                <i class="fas fa-paper-plane"></i> Apply for This Tuition
-                            </a>
-                        }
-                        else
-                        {
-                            <a href="/Account/Login?returnUrl=/Tuition/Apply/@post.Id"
-                               class="tc-btn-apply locked"
-                               title="Login required to apply">
-                                <i class="fas fa-sign-in-alt"></i> Login to Apply
-                            </a>
-                        }
-
+            <!-- SOCIAL POST FEED -->
+            <div class="post-feed" id="circularFeed">
+                @if (!feedPosts.Any())
+                {
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-inbox" style="font-size: 48px; color:#E7E4D9; margin-bottom:15px; display:block;"></i>
+                        <h4>কোনো পোস্ট নেই</h4>
+                        <p>স্টুডেন্টরা পোস্ট করলে এখানে দেখা যাবে।</p>
                     </div>
                 }
+                else
+                {
+                    foreach (var post in feedPosts)
+                    {
+                        <div class="fb-post" id="circular-post-@post.Id">
+                            <!-- Header -->
+                            <div class="fb-post-header">
+                                <div class="fb-post-user">
+                                    <div class="pc-avatar">
+                                        @if (!string.IsNullOrEmpty(post.UserProfileImage))
+                                        {
+                                            <img src="@post.UserProfileImage" alt="@post.UserName" />
+                                        }
+                                        else
+                                        {
+
+                                            @(post.UserFullName.Length > 0 ? post.UserFullName.Substring(0, 1).ToUpper() : "S")
+                                        }
+                                    </div>
+                                    <div class="fb-post-user-info">
+                                        <h6>@post.UserFullName</h6>
+                                        <div class="time"><i class="far fa-clock"></i> @post.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Content -->
+                            <div class="fb-post-content">@post.Content</div>
+
+                            <!-- Tags -->
+                            @if (!string.IsNullOrEmpty(post.PreferredArea) || !string.IsNullOrEmpty(post.ClassLevel) || !string.IsNullOrEmpty(post.Subjects))
+                            {
+                                <div class="fb-post-tags">
+                                    @if (!string.IsNullOrEmpty(post.PreferredArea))
+                                    {
+                                        <span class="fb-tag"><i class="fas fa-map-marker-alt"></i> @post.PreferredArea</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(post.ClassLevel))
+                                    {
+                                        <span class="fb-tag"><i class="fas fa-graduation-cap"></i> @post.ClassLevel</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(post.Subjects))
+                                    {
+                                        <span class="fb-tag"><i class="fas fa-book"></i> @post.Subjects</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(post.Budget))
+                                    {
+                                        <span class="fb-tag" style="background:#d4edda; color:#155724;"><i class="fas fa-money-bill-wave"></i> ৳@post.Budget</span>
+                                    }
+                                </div>
+                            }
+
+                            <!-- Image -->
+                            @if (!string.IsNullOrEmpty(post.ImageUrl))
+                            {
+                                <div class="fb-post-media"><img src="@post.ImageUrl" alt="Post Image" /></div>
+                            }
+
+                            <!-- Stats -->
+                            <div class="fb-post-stats">
+                                <span><i class="fas fa-thumbs-up text-primary"></i> <span id="like-count-@post.Id">@post.LikeCount</span> Likes</span>
+                                <span id="comment-count-@post.Id">@post.Comments.Sum(c => 1 + c.Replies.Count) Comments</span>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="fb-post-actions" style="flex-wrap:wrap; padding-bottom:8px;">
+                                @if (isLoggedIn)
+                                {
+                                    <button class="fb-action-btn" onclick="toggleCircularLike(@post.Id)">
+                                        <i class="far fa-thumbs-up" id="like-icon-@post.Id"></i> Like
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="fb-action-btn" onclick="alert('লাইক করতে লগইন করুন!')">
+                                        <i class="far fa-thumbs-up"></i> Like
+                                    </button>
+                                }
+                                <button class="fb-action-btn" onclick="toggleCircularComments(@post.Id)">
+                                    <i class="far fa-comment"></i> Comment
+                                </button>
+
+                                @if (isLoggedIn && isTeacher)
+                                {
+                                    <button class="apply-btn" onclick="applyForCircular(@post.Id)">
+                                        <i class="fas fa-paper-plane"></i> Apply Now
+                                    </button>
+                                }
+                            </div>
+
+                            <!-- Comments Area -->
+                            <div class="fb-comments-area" id="circular-comments-@post.Id">
+                                <div class="fb-comment-list" id="circular-comment-list-@post.Id">
+                                    @foreach (var comment in post.Comments)
+                                    {
+                                        <div class="fbc" id="cfbc-@comment.Id" data-id="@comment.Id" data-root="@comment.Id" data-name="@comment.UserFullName">
+                                            <div class="fbc-avatar">
+                                                @if (!string.IsNullOrEmpty(comment.UserProfileImage))
+                                                {
+                                                    <img src="@comment.UserProfileImage" alt="user" />
+                                                }
+                                                else
+                                                {
+
+                                                    @(comment.UserFullName.Length > 0 ? comment.UserFullName.Substring(0, 1).ToUpper() : "U")
+                                                }
+                                            </div>
+                                            <div class="fbc-main">
+                                                <div class="fbc-bubble @(comment.LikeCount > 0 ? "has-likes" : "")">
+                                                    <span class="fbc-name">@comment.UserFullName</span>
+                                                    <div class="fbc-text">@RenderCommentText(comment.Content)</div>
+                                                    <span class="fbc-like-badge @(comment.LikeCount > 0 ? "" : "zero")"><i class="fas fa-thumbs-up"></i><span class="fbc-like-n">@comment.LikeCount</span></span>
+                                                </div>
+                                                <div class="fbc-meta">
+                                                    @if (isLoggedIn)
+                                                    {
+                                                        <button type="button" class="fbc-like-btn @(comment.IsLikedByMe ? "liked" : "")" onclick="cfbcToggleLike(this, @comment.Id)">Like</button>
+                                                        <button type="button" onclick="cfbcOpenReply(@post.Id, @comment.Id, @comment.Id)">Reply</button>
+                                                    }
+                                                    <span class="fbc-time" data-utc="@CommentIso(comment.CreatedAt)">@comment.CreatedAt.ToString("dd MMM")</span>
+                                                </div>
+                                                <div class="fbc-replies-wrap">
+                                                    @if (comment.Replies != null && comment.Replies.Any())
+                                                    {
+                                                        <button type="button" class="fbc-view-replies" id="cfbc-vr-@comment.Id" onclick="cfbcShowReplies(@comment.Id)">
+                                                            <i class="fas fa-share fa-flip-vertical"></i> View @comment.Replies.Count replies
+                                                        </button>
+                                                    }
+                                                    <div class="fbc-replies" id="cfbc-replies-@comment.Id">
+                                                        @foreach (var reply in comment.Replies ?? new List<Tutorbub.Models.TuitionCircularComment>())
+                                                        {
+                                                            <div class="fbc is-reply" id="cfbc-@reply.Id" data-id="@reply.Id" data-root="@comment.Id" data-name="@reply.UserFullName">
+                                                                <div class="fbc-avatar">
+                                                                    @if (!string.IsNullOrEmpty(reply.UserProfileImage))
+                                                                    {
+                                                                        <img src="@reply.UserProfileImage" alt="user" />
+                                                                    }
+                                                                    else
+                                                                    {
+
+                                                                        @(reply.UserFullName.Length > 0 ? reply.UserFullName.Substring(0, 1).ToUpper() : "U")
+                                                                    }
+                                                                </div>
+                                                                <div class="fbc-main">
+                                                                    <div class="fbc-bubble @(reply.LikeCount > 0 ? "has-likes" : "")">
+                                                                        <span class="fbc-name">@reply.UserFullName</span>
+                                                                        <div class="fbc-text">@RenderCommentText(reply.Content)</div>
+                                                                        <span class="fbc-like-badge @(reply.LikeCount > 0 ? "" : "zero")"><i class="fas fa-thumbs-up"></i><span class="fbc-like-n">@reply.LikeCount</span></span>
+                                                                    </div>
+                                                                    <div class="fbc-meta">
+                                                                        @if (isLoggedIn)
+                                                                        {
+                                                                            <button type="button" class="fbc-like-btn @(reply.IsLikedByMe ? "liked" : "")" onclick="cfbcToggleLike(this, @reply.Id)">Like</button>
+                                                                            <button type="button" onclick="cfbcOpenReply(@post.Id, @comment.Id, @reply.Id)">Reply</button>
+                                                                        }
+                                                                        <span class="fbc-time" data-utc="@CommentIso(reply.CreatedAt)">@reply.CreatedAt.ToString("dd MMM")</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                                @if (isLoggedIn)
+                                {
+                                    <div class="fbc-input-row">
+                                        <div class="fbc-avatar">
+                                            @if (!string.IsNullOrEmpty(userProfileImg))
+                                            {
+                                                <img src="@userProfileImg" alt="me" />
+                                            }
+                                            else
+                                            {
+
+                                                @(userFullName.Length > 0 ? userFullName.Substring(0, 1).ToUpper() : "U")
+                                            }
+                                        </div>
+                                        <div class="fbc-pill">
+                                            <input type="text" id="circular-comment-input-@post.Id" placeholder="Write a comment..." maxlength="2000" onkeydown="handleCircularCommentEnter(event, @post.Id)" />
+                                            <button type="button" class="fbc-send" onclick="submitCircularComment(@post.Id)" title="Send"><i class="fas fa-paper-plane"></i></button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
             </div>
-        }
+
+            <hr style="margin: 40px 0;" />
+
+            <!-- ADMIN POSTS (OLD SYSTEM) -->
+            <div class="list-header">
+                <h3 style="font-family:'Georgia', serif; font-weight:700; color:#1F3B2C; margin-bottom:20px;"><i class="fas fa-clipboard-list"></i> Admin Circulars</h3>
+            </div>
+
+            <div class="admin-circular-grid">
+                @if (!Model.Any())
+                {
+                    <p class="text-muted">কোনো অ্যাডমিন সার্কুলার নেই।</p>
+                }
+                else
+                {
+                    @foreach (var post in Model)
+                    {
+                        <div class="ac-card">
+                            <div class="d-flex justify-content-between mb-2">
+                                @if (!string.IsNullOrEmpty(post.TuitionCode))
+                                {
+                                    <span class="badge" style="background:#1F3B2C; color:#F4C744; padding:5px 10px; border-radius:10px; font-family:monospace;">@post.TuitionCode</span>
+                                }
+                            </div>
+                            <h3 style="font-size:18px; color:#1F3B2C; font-weight:700; font-family:'Georgia', serif;">@post.Title</h3>
+                            <p style="font-size:13.5px; color:#6B7568; margin-bottom:15px; line-height:1.6;">
+                                @if (!string.IsNullOrEmpty(post.StudentClass))
+                                {
+                                    <span><strong>Class:</strong> @post.StudentClass</span> <br />
+                                }
+                                @if (!string.IsNullOrEmpty(post.Subjects))
+                                {
+                                    <span><strong>Subjects:</strong> @post.Subjects</span> <br />
+                                }
+                                @if (!string.IsNullOrEmpty(post.Area))
+                                {
+                                    <span><strong>Area:</strong> @post.Area</span> <br />
+                                }
+                                @if (!string.IsNullOrEmpty(post.Salary))
+                                {
+                                    <span style="color:#155724; font-weight:700;">Salary: ৳@post.Salary</span>
+                                }
+                            </p>
+                            @if (isLoggedIn)
+                            {
+                                <a href="/Tuition/Details/@post.Id" class="btn" style="background:#1F3B2C; color:white; width:100%; border-radius:8px; padding:10px; font-weight:600; margin-top:auto;">View Details</a>
+                            }
+                            else
+                            {
+                                <a href="/Account/Login" class="btn" style="background:#8A9188; color:white; width:100%; border-radius:8px; padding:10px; font-weight:600; margin-top:auto;">Login to View</a>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+        </div>
+
+        <!-- ====================== RIGHT SIDEBAR (PROMO) ====================== -->
+        <div class="tc-sidebar">
+
+            <!-- Promo Card -->
+            <div class="promo-card">
+                <h3>
+                    <i class="fas fa-bullhorn" style="color:#F4C744; margin-right:8px;"></i> Need a Teacher?
+                </h3>
+                <p>আপনার এলাকায় বা আপনার পছন্দের শিক্ষক খুঁজে পাচ্ছেন না? আমাদের অ্যাডমিন টিম আপনাকে সাহায্য করবে। সরাসরি রিকোয়েস্ট পাঠান।</p>
+                <button class="promo-btn" onclick="window.location.href='/FindTutor/Index'">
+                    <i class="fas fa-search"></i> Find a Tutor
+                </button>
+            </div>
+
+            <!-- How it works -->
+            <div class="sidebar-card">
+                <h3><i class="fas fa-lightbulb" style="color:#D98E1F;"></i> How It Works</h3>
+                <ul class="sidebar-list">
+                    <li>
+                        <i class="fas fa-check-circle"></i>
+                        <span>স্টুডেন্টরা তাদের টিউশনের প্রয়োজনীয়তা এখানে পোস্ট করে।</span>
+                    </li>
+                    <li>
+                        <i class="fas fa-check-circle"></i>
+                        <span>টিচাররা পোস্ট দেখে Apply Now বাটনে ক্লিক করে।</span>
+                    </li>
+                    <li>
+                        <i class="fas fa-check-circle"></i>
+                        <span>অ্যাডমিন সব রিকোয়েস্ট যাচাই করে টিচার ও স্টুডেন্টের মধ্যে যোগাযোগ করিয়ে দেন।</span>
+                    </li>
+                    <li>
+                        <i class="fas fa-check-circle"></i>
+                        <span>কোনো টাকা লেনদেন ছাড়াই নিরাপদে টিউশন শুরু হয়।</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Admin Contact -->
+            <div class="sidebar-card">
+                <h3><i class="fas fa-headset" style="color:#2ecc71;"></i> Admin Support</h3>
+                <p>কোনো সমস্যা হলে বা জানতে চাইলে সরাসরি অ্যাডমিনের সাথে যোগাযোগ করুন।</p>
+                <a href="/Helpdesk" class="sidebar-btn">
+                    <i class="fas fa-comments"></i> Go to Helpdesk
+                </a>
+            </div>
+
+        </div>
 
     </div>
 </div>
+
+<!-- ====================== CREATE POST MODAL (FindTutor Style) ====================== -->
+<div class="modal fade" id="createCircularPostModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title w-100 text-center">পোস্ট তৈরি করুন</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- User Info -->
+                <div class="d-flex gap-2 align-items-center mb-3">
+                    <div class="pc-avatar">
+                        @if (!string.IsNullOrEmpty(userProfileImg))
+                        {
+                            <img src="@userProfileImg" alt="me" />
+                        }
+                        else
+                        {
+
+                            @(userFullName.Length > 0 ? userFullName.Substring(0, 1).ToUpper() : "U")
+                        }
+                    </div>
+                    <div>
+                        <h6 class="mb-0 fw-bold">@userFullName</h6>
+                        <span class="badge bg-success" style="font-size:10px;">@(isTeacher ? "Teacher" : "Student")</span>
+                    </div>
+                </div>
+
+                <textarea id="circularPostContent" class="modal-textarea" placeholder="আপনার টিউশনের প্রয়োজনীয়তা লিখুন..." oninput="checkCircularPostBtn()"></textarea>
+
+                <div class="row g-2 mt-2">
+                    <div class="col-6"><input type="text" id="cpArea" class="form-control" placeholder="এলাকা (Area)" style="font-size:14px;" /></div>
+                    <div class="col-6"><input type="text" id="cpClass" class="form-control" placeholder="ক্লাস (Class)" style="font-size:14px;" /></div>
+                    <div class="col-6"><input type="text" id="cpSubjects" class="form-control" placeholder="বিষয় (Subjects)" style="font-size:14px;" /></div>
+                    <div class="col-6"><input type="text" id="cpBudget" class="form-control" placeholder="বাজেট (Budget ৳)" style="font-size:14px;" /></div>
+                </div>
+
+                <div class="modal-preview" id="cpImageBox">
+                    <button type="button" class="remove-preview" onclick="removeCpImage()"><i class="fas fa-times"></i></button>
+                    <img id="cpImagePreview" src="" alt="Preview" />
+                </div>
+
+                <div class="modal-actions-bottom mt-3">
+                    <span style="font-size:14px; font-weight:600; color:#1F3B2C;">Add to your post</span>
+                    <div>
+                        <label for="cpImageInput" class="icon-btn" style="cursor:pointer; margin:0;">
+                            <i class="fas fa-images" style="color:#2ecc71;"></i>
+                        </label>
+                        <input type="file" id="cpImageInput" accept="image/*" style="display:none;" onchange="previewCpImage(this)" />
+
+                        <button class="icon-btn" type="button"><i class="fas fa-smile" style="color:#f39c12;"></i></button>
+                    </div>
+                </div>
+
+                <button class="btn-post" id="submitCircularPostBtn" onclick="submitCircularPost()" disabled>Post</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // ============================================================
+        // POST SYSTEM JS
+        // ============================================================
+        let cpImageUrl = null;
+
+        function openCircularPostModal() {
+            document.getElementById('circularPostContent').value = '';
+            document.getElementById('cpArea').value = '';
+            document.getElementById('cpClass').value = '';
+            document.getElementById('cpSubjects').value = '';
+            document.getElementById('cpBudget').value = '';
+            removeCpImage();
+            checkCircularPostBtn();
+            new bootstrap.Modal(document.getElementById('createCircularPostModal')).show();
+        }
+
+        function checkCircularPostBtn() {
+            var content = document.getElementById('circularPostContent').value.trim();
+            var btn = document.getElementById('submitCircularPostBtn');
+            btn.disabled = (content.length === 0 && !cpImageUrl);
+        }
+
+        function previewCpImage(input) {
+            if (input.files && input.files[0]) {
+                var file = input.files[0];
+                if (file.size > 5 * 1024 * 1024) { alert('Image must be less than 5MB'); return; }
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    document.getElementById('cpImagePreview').src = e.target.result;
+                    document.getElementById('cpImageBox').style.display = 'block';
+                    checkCircularPostBtn();
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function removeCpImage() {
+            document.getElementById('cpImageInput').value = '';
+            document.getElementById('cpImageBox').style.display = 'none';
+            document.getElementById('cpImagePreview').src = '';
+            checkCircularPostBtn();
+        }
+
+        async function submitCircularPost() {
+            var content = document.getElementById('circularPostContent').value.trim();
+            var area = document.getElementById('cpArea').value.trim();
+            var classLevel = document.getElementById('cpClass').value.trim();
+            var subjects = document.getElementById('cpSubjects').value.trim();
+            var budget = document.getElementById('cpBudget').value.trim();
+            var btn = document.getElementById('submitCircularPostBtn');
+
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting...';
+            btn.disabled = true;
+
+            var formData = new FormData();
+            formData.append('content', content);
+            formData.append('preferredArea', area);
+            formData.append('classLevel', classLevel);
+            formData.append('subjects', subjects);
+            formData.append('budget', budget);
+
+            var fileInput = document.getElementById('cpImageInput');
+            if (fileInput.files.length > 0) { formData.append('imageFile', fileInput.files[0]); }
+
+            var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            formData.append('__RequestVerificationToken', token);
+
+            try {
+                var res = await fetch('/Tuition/CreateCircularPost', { method: 'POST', body: formData });
+                var data = await res.json();
+                if (data.success) { location.reload(); }
+                else { alert(data.message || 'Failed to post.'); btn.innerHTML = 'Post'; btn.disabled = false; }
+            } catch (err) {
+                alert('Error: ' + err.message); btn.innerHTML = 'Post'; btn.disabled = false;
+            }
+        }
+
+        // ============================================================
+        // COMMENTS & LIKES JS
+        // ============================================================
+        window.cfbcMe = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { name = userFullName, img = userProfileImg ?? "" }));
+
+        function toggleCircularComments(postId) {
+            var area = document.getElementById('circular-comments-' + postId);
+            if (area.classList.contains('show')) { area.classList.remove('show'); }
+            else {
+                area.classList.add('show');
+                var inp = document.getElementById('circular-comment-input-' + postId);
+                if (inp) inp.focus();
+            }
+        }
+
+        function handleCircularCommentEnter(e, postId) {
+            if (e.key === 'Enter') { e.preventDefault(); submitCircularComment(postId); }
+        }
+
+        function cfbcEsc(t) {
+            return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function cfbcToken() { return document.querySelector('input[name="__RequestVerificationToken"]').value; }
+        function cfbcAvatarHtml(img, name) {
+            if (img) return '<img src="' + cfbcEsc(img) + '" alt="user" />';
+            return cfbcEsc((name || 'U').charAt(0).toUpperCase());
+        }
+        function cfbcRenderText(content) {
+            var s = cfbcEsc(content);
+            var m = s.match(/^@@\[([^\]]+)\]\s?/);
+            if (m) return '<span class="fbc-mention">' + m[1] + '</span> ' + s.slice(m[0].length);
+            return s;
+        }
+        function cfbcBuild(c, isReply, postId, rootId) {
+            var liked = c.isLiked ? ' liked' : '';
+            var zero = (c.likeCount > 0) ? '' : ' zero';
+            var h = ''
+                + '<div class="fbc' + (isReply ? ' is-reply' : '') + '" id="cfbc-' + c.id + '" data-id="' + c.id + '" data-root="' + rootId + '" data-name="' + cfbcEsc(c.userFullName) + '">'
+                + '  <div class="fbc-avatar">' + cfbcAvatarHtml(c.userProfileImage, c.userFullName) + '</div>'
+                + '  <div class="fbc-main">'
+                + '    <div class="fbc-bubble' + (c.likeCount > 0 ? ' has-likes' : '') + '">'
+                + '      <span class="fbc-name">' + cfbcEsc(c.userFullName) + '</span>'
+                + '      <div class="fbc-text">' + cfbcRenderText(c.content) + '</div>'
+                + '      <span class="fbc-like-badge' + zero + '"><i class="fas fa-thumbs-up"></i><span class="fbc-like-n">' + (c.likeCount || 0) + '</span></span>'
+                + '    </div>'
+                + '    <div class="fbc-meta">'
+                + '      <button type="button" class="fbc-like-btn' + liked + '" onclick="cfbcToggleLike(this, ' + c.id + ')">Like</button>'
+                + '      <button type="button" onclick="cfbcOpenReply(' + postId + ', ' + rootId + ', ' + c.id + ')">Reply</button>'
+                + '      <span class="fbc-time" data-utc="' + cfbcEsc(c.createdAtUtc) + '">Just now</span>'
+                + '    </div>';
+            if (!isReply) { h += '    <div class="fbc-replies-wrap"><div class="fbc-replies" id="cfbc-replies-' + c.id + '"></div></div>'; }
+            h += '  </div></div>';
+            return h;
+        }
+
+        function cfbcBumpCount(postId) {
+            var el = document.getElementById('comment-count-' + postId);
+            if (!el) return;
+            var n = parseInt(el.textContent, 10) || 0;
+            el.textContent = (n + 1) + ' Comments';
+        }
+
+        async function cfbcSend(postId, content, parentId) {
+            var fd = new FormData();
+            fd.append('postId', postId);
+            fd.append('content', content);
+            if (parentId) fd.append('parentId', parentId);
+            fd.append('__RequestVerificationToken', cfbcToken());
+            var res = await fetch('/Tuition/AddCircularComment', { method: 'POST', body: fd });
+            return await res.json();
+        }
+
+        window.submitCircularComment = async function (postId) {
+            var input = document.getElementById('circular-comment-input-' + postId);
+            var content = input.value.trim();
+            if (!content) return;
+
+            input.disabled = true;
+            try {
+                var data = await cfbcSend(postId, content, null);
+                if (data.success) {
+                    var list = document.getElementById('circular-comment-list-' + postId);
+                    list.insertAdjacentHTML('beforeend', cfbcBuild(data.comment, false, postId, data.comment.id));
+                    input.value = '';
+                    cfbcBumpCount(postId);
+                } else { alert(data.message || 'Failed to comment.'); }
+            } catch (err) { alert('Error: ' + err.message); }
+            input.disabled = false;
+            input.focus();
+        };
+
+        window.cfbcShowReplies = function (rootId) {
+            var list = document.getElementById('cfbc-replies-' + rootId);
+            if (list) list.style.display = 'flex';
+            var vr = document.getElementById('cfbc-vr-' + rootId);
+            if (vr) vr.style.display = 'none';
+        };
+
+        window.cfbcCloseReplyBoxes = function (postId) {
+            document.querySelectorAll('#circular-post-' + postId + ' .fbc-replybox').forEach(function (b) { b.remove(); });
+        };
+
+        window.cfbcOpenReply = function (postId, rootId, targetId) {
+            var target = document.getElementById('cfbc-' + targetId);
+            if (!target) return;
+            var targetName = target.getAttribute('data-name') || '';
+            var isNested = (targetId !== rootId);
+
+            cfbcCloseReplyBoxes(postId);
+            cfbcShowReplies(rootId);
+
+            var box = document.createElement('div');
+            box.className = 'fbc-input-row fbc-replybox';
+            box.innerHTML = ''
+                + '<div class="fbc-avatar">' + cfbcAvatarHtml(window.cfbcMe.img, window.cfbcMe.name) + '</div>'
+                + '<div class="fbc-pill">'
+                + (isNested ? '<span class="fbc-mention-tag">' + cfbcEsc(targetName) + '</span>' : '')
+                + '  <input type="text" maxlength="2000" placeholder="Reply..." />'
+                + '  <button type="button" class="fbc-send" title="Send"><i class="fas fa-paper-plane"></i></button>'
+                + '</div>';
+
+            var list = document.getElementById('cfbc-replies-' + rootId);
+            if (isNested) target.insertAdjacentElement('afterend', box);
+            else list.appendChild(box);
+
+            var input = box.querySelector('input');
+            var send = box.querySelector('.fbc-send');
+
+            async function doSend() {
+                var text = input.value.trim();
+                if (!text) return;
+                var content = (isNested ? '@@[' + targetName + '] ' : '') + text;
+                input.disabled = true; send.disabled = true;
+                try {
+                    var data = await cfbcSend(postId, content, targetId);
+                    if (data.success) {
+                        box.insertAdjacentHTML('beforebegin', cfbcBuild(data.comment, true, postId, rootId));
+                        box.remove();
+                        cfbcBumpCount(postId);
+                        return;
+                    }
+                    alert(data.message || 'Failed to reply.');
+                } catch (err) { alert('Error: ' + err.message); }
+                input.disabled = false; send.disabled = false; input.focus();
+            }
+
+            send.addEventListener('click', doSend);
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); doSend(); }
+                else if (e.key === 'Escape') { box.remove(); }
+            });
+            input.focus();
+        };
+
+        window.cfbcToggleLike = async function (btn, commentId) {
+            var fd = new FormData();
+            fd.append('commentId', commentId);
+            fd.append('__RequestVerificationToken', cfbcToken());
+            btn.disabled = true;
+            try {
+                var res = await fetch('/Tuition/ToggleCircularCommentLike', { method: 'POST', body: fd });
+                var data = await res.json();
+                if (data.success) {
+                    btn.classList.toggle('liked', data.isLiked);
+                    var el = document.getElementById('cfbc-' + commentId);
+                    var bubble = el.querySelector('.fbc-bubble');
+                    var badge = bubble.querySelector('.fbc-like-badge');
+                    badge.querySelector('.fbc-like-n').textContent = data.count;
+                    badge.classList.toggle('zero', data.count < 1);
+                    bubble.classList.toggle('has-likes', data.count > 0);
+                } else { alert(data.message || 'Failed.'); }
+            } catch (err) { alert('Error: ' + err.message); }
+            btn.disabled = false;
+        };
+
+        window.toggleCircularLike = async function (postId) {
+            var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            var formData = new FormData();
+            formData.append('postId', postId);
+            formData.append('__RequestVerificationToken', token);
+
+            try {
+                var res = await fetch('/Tuition/ToggleCircularLike', { method: 'POST', body: formData });
+                var data = await res.json();
+                if (data.success) {
+                    var countEl = document.getElementById('like-count-' + postId);
+                    var iconEl = document.getElementById('like-icon-' + postId);
+                    countEl.innerText = data.count;
+                    if (data.isLiked) {
+                        iconEl.className = 'fas fa-thumbs-up';
+                        iconEl.style.color = '#1877F2';
+                    } else {
+                        iconEl.className = 'far fa-thumbs-up';
+                        iconEl.style.color = '#1F3B2C';
+                    }
+                }
+            } catch (err) { console.log(err); }
+        };
+
+        // Apply Now Function
+        window.applyForCircular = function (postId) {
+            if (confirm('আপনি কি এই টিউশনে অ্যাপ্লাই করতে চান? অ্যাপ্লাই করলে অ্যাডমিন আপনার সাথে যোগাযোগ করবেন।')) {
+                window.location.href = '/Tuition/Apply/' + postId;
+            }
+        };
+    </script>
+}
