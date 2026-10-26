@@ -1,8 +1,14 @@
-﻿using System;
+﻿// 📁 Models/TeacherRequest.cs
+// লোকেশন: Tutorbub/Models/TeacherRequest.cs
+
+using System;
 using System.Collections.Generic;
 
 namespace Tutorbub.Models
 {
+    // ============================================================
+    // ===== TEACHER REQUEST =====
+    // ============================================================
     public class TeacherRequest
     {
         public int Id { get; set; }
@@ -27,6 +33,9 @@ namespace Tutorbub.Models
         public User? User { get; set; }
     }
 
+    // ============================================================
+    // ===== TEACHER DASHBOARD VIEW MODEL =====
+    // ============================================================
     public class TeacherDashboardViewModel
     {
         public int Id { get; set; }
@@ -36,30 +45,16 @@ namespace Tutorbub.Models
         public string SubjectExpertise { get; set; } = string.Empty;
         public string Experience { get; set; } = string.Empty;
         public string ProfileImageLink { get; set; } = string.Empty;
-        public int TotalStudents { get; set; }
-        public int TotalCourses { get; set; }
-        public int CompletedSessions { get; set; }
         public double Rating { get; set; }
-        public List<TeacherCourse>? Courses { get; set; }
-        public List<TeacherStudent>? RecentStudents { get; set; }
-    }
 
-    public class TeacherCourse
-    {
-        public int Id { get; set; }
-        public string Title { get; set; } = string.Empty;
-        public string Image { get; set; } = string.Empty;
-        public int StudentCount { get; set; }
-        public string Status { get; set; } = string.Empty;
-        public DateTime CreatedAt { get; set; }
-    }
-
-    public class TeacherStudent
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Course { get; set; } = string.Empty;
-        public DateTime JoinedAt { get; set; }
+        // ============================================================
+        // ===== TUITION APPLICATIONS =====
+        // ============================================================
+        public List<TuitionApplication> TuitionApplications { get; set; } = new List<TuitionApplication>();
+        public int TotalApplications { get; set; }
+        public int PendingApplications { get; set; }
+        public int ShortlistedApplications { get; set; }
+        public int SelectedApplications { get; set; }
+        public int RejectedApplications { get; set; }
     }
 }

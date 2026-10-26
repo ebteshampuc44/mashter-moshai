@@ -2,6 +2,8 @@
 // লোকেশন: Tutorbub/Controllers/AdminController.cs
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Tutorbub.Data;
 using Tutorbub.Models;
 using System;
 using System.Collections.Generic;
@@ -15,11 +17,16 @@ namespace Tutorbub.Controllers
     {
         private readonly DatabaseHelper _dbHelper;
         private readonly IWebHostEnvironment _webHostEnvironment;
+        private readonly ApplicationDbContext _context;
 
-        public AdminController(IConfiguration configuration, IWebHostEnvironment webHostEnvironment)
+        public AdminController(
+            IConfiguration configuration,
+            IWebHostEnvironment webHostEnvironment,
+            ApplicationDbContext context)
         {
             _dbHelper = new DatabaseHelper(configuration);
             _webHostEnvironment = webHostEnvironment;
+            _context = context;
         }
 
         // ============================================================
@@ -36,13 +43,11 @@ namespace Tutorbub.Controllers
             var users = _dbHelper.GetAllUsers();
             var requests = _dbHelper.GetAllTeacherRequests();
             var pendingCount = requests.Count(r => r.Status == "Pending");
-
-            var payStats = _dbHelper.GetPaymentStats();
+            var tutorReqStats = _dbHelper.GetTutorRequestStats();
 
             ViewBag.UserCount = users.Count;
             ViewBag.PendingCount = pendingCount;
-            ViewBag.PendingPayments = payStats.Pending;
-            ViewBag.TotalRevenue = payStats.TotalRevenue;
+            ViewBag.PendingTutorRequests = tutorReqStats.Pending;
 
             return View(users);
         }
@@ -216,11 +221,9 @@ namespace Tutorbub.Controllers
 
             var requests = _dbHelper.GetAllTeacherRequests();
             var users = _dbHelper.GetAllUsers();
-            var payStats = _dbHelper.GetPaymentStats();
 
             ViewBag.UserCount = users.Count;
             ViewBag.PendingCount = requests.Count(r => r.Status == "Pending");
-            ViewBag.PendingPayments = payStats.Pending;
 
             return View(requests);
         }
@@ -368,388 +371,64 @@ namespace Tutorbub.Controllers
         }
 
         // ============================================================
-        // ===== PAYMENT MANAGEMENT =====
+        // ===== TUTOR REQUESTS (Student → Admin) =====
         // ============================================================
 
-        public IActionResult Payments(string status = "all")
+        [HttpGet]
+        public IActionResult TutorRequests(string status = "all")
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return RedirectToAction("Login", "Account");
-            }
+            if (role != "Admin") return RedirectToAction("Login", "Account");
 
-            var payments = _dbHelper.GetAllOrders(status);
-            var stats = _dbHelper.GetPaymentStats();
+            var requests = _dbHelper.GetAllTutorRequests(status);
+            var stats = _dbHelper.GetTutorRequestStats();
 
+            ViewBag.TotalCount = stats.Total;
             ViewBag.PendingCount = stats.Pending;
-            ViewBag.ApprovedCount = stats.Approved;
-            ViewBag.RejectedCount = stats.Rejected;
-            ViewBag.TotalRevenue = stats.TotalRevenue;
-            ViewBag.CurrentFilter = status;
-            ViewBag.PendingPayments = stats.Pending;
+            ViewBag.ContactedCount = stats.Contacted;
+            ViewBag.CompletedCount = stats.Completed;
+            ViewBag.CurrentStatus = status;
 
-            return View(payments);
+            return View(requests);
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult ApprovePayment(int id, string? adminNote)
+        public IActionResult UpdateTutorRequestStatus(int id, string status, string? adminNote)
         {
             var role = HttpContext.Session.GetString("UserRole");
             if (role != "Admin")
-            {
                 return Json(new { success = false, message = "Unauthorized" });
-            }
 
-            var adminId = int.Parse(HttpContext.Session.GetString("UserId") ?? "0");
+            if (string.IsNullOrWhiteSpace(status))
+                return Json(new { success = false, message = "Status is required." });
 
-            if (_dbHelper.ApproveOrder(id, adminId, adminNote))
-            {
-                var order = _dbHelper.GetOrderById(id);
-                if (order != null)
-                {
-                    _dbHelper.CreateNotification(
-                        order.UserId,
-                        "🎉 Payment Approved!",
-                        $"Your payment for \"{order.CourseName}\" has been approved. You can now access the course!",
-                        "success",
-                        $"/Learn/Details/{order.CourseId}",
-                        "fa-check-circle"
-                    );
-                }
+            var allowedStatuses = new[] { "Pending", "Contacted", "Completed", "Cancelled" };
+            if (!allowedStatuses.Contains(status))
+                return Json(new { success = false, message = "Invalid status value." });
 
-                return Json(new { success = true, message = "Payment approved successfully! User now has access to the course." });
-            }
-            return Json(new { success = false, message = "Failed to approve payment." });
+            if (_dbHelper.UpdateTutorRequestStatus(id, status, adminNote))
+                return Json(new { success = true, message = "Status updated successfully." });
+
+            return Json(new { success = false, message = "Failed to update status." });
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult RejectPayment(int id, string? adminNote)
+        public IActionResult DeleteTutorRequest(int id)
         {
             var role = HttpContext.Session.GetString("UserRole");
             if (role != "Admin")
-            {
                 return Json(new { success = false, message = "Unauthorized" });
-            }
 
-            var adminId = int.Parse(HttpContext.Session.GetString("UserId") ?? "0");
+            if (_dbHelper.DeleteTutorRequest(id))
+                return Json(new { success = true, message = "Request deleted successfully." });
 
-            if (_dbHelper.RejectOrder(id, adminId, adminNote))
-            {
-                var order = _dbHelper.GetOrderById(id);
-                if (order != null)
-                {
-                    var reason = string.IsNullOrEmpty(adminNote)
-                        ? "Please check your transaction details and try again."
-                        : $"Reason: {adminNote}";
-
-                    _dbHelper.CreateNotification(
-                        order.UserId,
-                        "❌ Payment Rejected",
-                        $"Your payment for \"{order.CourseName}\" was rejected. {reason}",
-                        "danger",
-                        $"/Payment/Checkout?courseId={order.CourseId}",
-                        "fa-times-circle"
-                    );
-                }
-
-                return Json(new { success = true, message = "Payment rejected." });
-            }
-            return Json(new { success = false, message = "Failed to reject payment." });
+            return Json(new { success = false, message = "Failed to delete request." });
         }
 
         // ============================================================
-        // ===== ADD COURSE =====
-        // ============================================================
-
-        [HttpGet]
-        public IActionResult AddCourse()
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return RedirectToAction("Login", "Account");
-            }
-            return View();
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult AddCourse(Course model)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return RedirectToAction("Login", "Account");
-            }
-
-            if (ModelState.IsValid)
-            {
-                model.CreatedAt = DateTime.UtcNow;
-                model.IsEnrollmentOpen = true;
-
-                if (_dbHelper.CreateCourse(model, out string? error))
-                {
-                    TempData["Success"] = "Course added successfully!";
-                    return RedirectToAction("AddCourse");
-                }
-
-                ViewBag.Error = $"Failed to add course: {error}";
-            }
-
-            return View(model);
-        }
-
-        // ============================================================
-        // ===== UPLOAD COURSE IMAGE =====
-        // ============================================================
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> UploadCourseImage(IFormFile courseImage)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return Json(new { success = false, message = "Unauthorized" });
-            }
-
-            if (courseImage == null || courseImage.Length == 0)
-            {
-                return Json(new { success = false, message = "Please select an image." });
-            }
-
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
-            var extension = Path.GetExtension(courseImage.FileName).ToLowerInvariant();
-
-            if (!allowedExtensions.Contains(extension))
-            {
-                return Json(new { success = false, message = "Only JPG, PNG, GIF, or WEBP images are allowed." });
-            }
-
-            if (courseImage.Length > 5 * 1024 * 1024)
-            {
-                return Json(new { success = false, message = "Image size must be less than 5MB." });
-            }
-
-            try
-            {
-                var uploadPath = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "courses");
-                if (!Directory.Exists(uploadPath))
-                {
-                    Directory.CreateDirectory(uploadPath);
-                }
-
-                var fileName = $"course_{DateTime.Now.Ticks}{extension}";
-                var filePath = Path.Combine(uploadPath, fileName);
-
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await courseImage.CopyToAsync(stream);
-                }
-
-                var imageUrl = $"/uploads/courses/{fileName}";
-                return Json(new { success = true, message = "Image uploaded successfully!", imageUrl });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, message = $"Error: {ex.Message}" });
-            }
-        }
-
-        // ============================================================
-        // ===== UPLOAD COURSE LESSON =====
-        // ============================================================
-
-        [HttpGet]
-        public IActionResult UploadLesson(int courseId)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return RedirectToAction("Login", "Account");
-            }
-
-            var course = _dbHelper.GetCourseById(courseId);
-            if (course == null)
-            {
-                TempData["Error"] = "Course not found.";
-                return RedirectToAction("ManageCourses");
-            }
-
-            ViewBag.Course = course;
-            var lessons = _dbHelper.GetLessonsByCourseId(courseId);
-            ViewBag.Lessons = lessons;
-            return View();
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult UploadLesson(int courseId, int moduleNumber, int lessonNumber,
-            string title, string duration, string? description, string? videoUrl)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return Json(new { success = false, message = "Unauthorized" });
-            }
-
-            if (string.IsNullOrWhiteSpace(title))
-            {
-                return Json(new { success = false, message = "Lesson title is required." });
-            }
-
-            if (string.IsNullOrWhiteSpace(videoUrl))
-            {
-                return Json(new { success = false, message = "Video URL is required." });
-            }
-
-            var lesson = new CourseLesson
-            {
-                CourseId = courseId,
-                ModuleNumber = moduleNumber,
-                LessonNumber = lessonNumber,
-                Title = title.Trim(),
-                VideoUrl = videoUrl.Trim(),
-                Duration = duration?.Trim() ?? "",
-                Description = description?.Trim(),
-                CreatedAt = DateTime.UtcNow
-            };
-
-            if (_dbHelper.CreateCourseLesson(lesson, out string? error))
-            {
-                return Json(new { success = true, message = "Lesson uploaded successfully!" });
-            }
-
-            return Json(new { success = false, message = $"Failed to save lesson: {error}" });
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult DeleteLesson(int id)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return Json(new { success = false, message = "Unauthorized" });
-            }
-
-            if (_dbHelper.DeleteCourseLesson(id))
-            {
-                return Json(new { success = true, message = "Lesson deleted successfully." });
-            }
-            return Json(new { success = false, message = "Failed to delete lesson." });
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> UploadLessonVideo(IFormFile lessonVideo)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return Json(new { success = false, message = "Unauthorized" });
-            }
-
-            if (lessonVideo == null || lessonVideo.Length == 0)
-            {
-                return Json(new { success = false, message = "Please select a video file." });
-            }
-
-            var allowedExtensions = new[] { ".mp4", ".webm", ".ogg", ".mov", ".avi", ".mkv" };
-            var extension = Path.GetExtension(lessonVideo.FileName).ToLowerInvariant();
-
-            if (!allowedExtensions.Contains(extension))
-            {
-                return Json(new { success = false, message = "Only MP4, WEBM, OGG, MOV, AVI, or MKV videos are allowed." });
-            }
-
-            if (lessonVideo.Length > 500 * 1024 * 1024)
-            {
-                return Json(new { success = false, message = "Video size must be less than 500MB." });
-            }
-
-            try
-            {
-                var uploadPath = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "videos");
-                if (!Directory.Exists(uploadPath))
-                {
-                    Directory.CreateDirectory(uploadPath);
-                }
-
-                var fileName = $"lesson_{DateTime.Now.Ticks}{extension}";
-                var filePath = Path.Combine(uploadPath, fileName);
-
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await lessonVideo.CopyToAsync(stream);
-                }
-
-                var videoUrl = $"/uploads/videos/{fileName}";
-                return Json(new { success = true, message = "Video uploaded successfully!", videoUrl });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, message = $"Error: {ex.Message}" });
-            }
-        }
-
-        // ============================================================
-        // ===== MANAGE COURSES =====
-        // ============================================================
-
-        [HttpGet]
-        public IActionResult ManageCourses()
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return RedirectToAction("Login", "Account");
-            }
-
-            var courses = _dbHelper.GetAllCourses();
-            return View(courses);
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult DeleteCourse(int id)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return Json(new { success = false, message = "Unauthorized" });
-            }
-
-            if (_dbHelper.DeleteCourse(id))
-            {
-                return Json(new { success = true, message = "Course deleted successfully." });
-            }
-            return Json(new { success = false, message = "Failed to delete course." });
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult ToggleEnrollment(int id, bool isOpen)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin")
-            {
-                return Json(new { success = false, message = "Unauthorized" });
-            }
-
-            if (_dbHelper.ToggleEnrollment(id, isOpen))
-            {
-                var status = isOpen ? "opened" : "closed";
-                return Json(new { success = true, message = $"Enrollment {status} successfully." });
-            }
-            return Json(new { success = false, message = "Failed to update enrollment status." });
-        }
-
-        // ============================================================
-        // ===== NOTICE MANAGEMENT (NEWS & ANNOUNCEMENTS) =====
+        // ===== NOTICE MANAGEMENT =====
         // ============================================================
 
         [HttpGet]
@@ -770,7 +449,7 @@ namespace Tutorbub.Controllers
 
             return View(new Notice
             {
-                PublishedDate = DateTime.Now,
+                PublishedDate = DateTime.UtcNow,
                 IsActive = true,
                 IsAnnouncement = false
             });
@@ -794,12 +473,15 @@ namespace Tutorbub.Controllers
                 return View(model);
             }
 
-            Console.WriteLine("========== AddNotice POST ==========");
-            Console.WriteLine($"Title: {model.Title}");
-            Console.WriteLine($"IsAnnouncement: {model.IsAnnouncement}");
-            Console.WriteLine($"IsActive: {model.IsActive}");
-            Console.WriteLine($"Category: {model.Category}");
-            Console.WriteLine("====================================");
+            if (string.Equals(model.Category, "News", StringComparison.OrdinalIgnoreCase))
+            {
+                model.IsAnnouncement = false;
+            }
+
+            if (model.PublishedDate == default(DateTime) || model.PublishedDate.Year < 2000 || model.PublishedDate.Year > 2100)
+            {
+                model.PublishedDate = DateTime.UtcNow;
+            }
 
             if (model.IsAnnouncement)
             {
@@ -855,12 +537,15 @@ namespace Tutorbub.Controllers
                 return View(model);
             }
 
-            Console.WriteLine("========== EditNotice POST ==========");
-            Console.WriteLine($"Id: {model.Id}");
-            Console.WriteLine($"Title: {model.Title}");
-            Console.WriteLine($"IsAnnouncement: {model.IsAnnouncement}");
-            Console.WriteLine($"IsActive: {model.IsActive}");
-            Console.WriteLine("=====================================");
+            if (string.Equals(model.Category, "News", StringComparison.OrdinalIgnoreCase))
+            {
+                model.IsAnnouncement = false;
+            }
+
+            if (model.PublishedDate == default(DateTime) || model.PublishedDate.Year < 2000 || model.PublishedDate.Year > 2100)
+            {
+                model.PublishedDate = DateTime.UtcNow;
+            }
 
             if (model.IsAnnouncement)
             {
@@ -947,275 +632,526 @@ namespace Tutorbub.Controllers
         }
 
         // ============================================================
-        // ===== QUIZ & ASSIGNMENT OVERVIEW (NEW) =====
-        // ===== List all courses with quiz/assignment counts =====
+        // ===== SITE SETTINGS =====
         // ============================================================
 
-        // GET: /Admin/QuizAssignmentOverview
         [HttpGet]
-        public IActionResult QuizAssignmentOverview()
+        public IActionResult Settings()
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return RedirectToAction("Login", "Account");
+            if (role != "Admin")
+                return RedirectToAction("Login", "Account");
 
-            var courses = _dbHelper.GetAllCourses();
-
-            // প্রতিটি course-এর quiz ও assignment count বের করা
-            var quizCounts = new Dictionary<int, int>();
-            var assignCounts = new Dictionary<int, int>();
-
-            foreach (var c in courses)
-            {
-                try
-                {
-                    quizCounts[c.Id] = _dbHelper.GetQuizzesByCourse(c.Id).Count;
-                }
-                catch
-                {
-                    quizCounts[c.Id] = 0;
-                }
-
-                try
-                {
-                    assignCounts[c.Id] = _dbHelper.GetAssignmentsByCourse(c.Id).Count;
-                }
-                catch
-                {
-                    assignCounts[c.Id] = 0;
-                }
-            }
-
-            ViewBag.QuizCounts = quizCounts;
-            ViewBag.AssignCounts = assignCounts;
-
-            return View(courses);
+            var settings = _dbHelper.GetSiteSettings();
+            return View(settings);
         }
 
-        // ============================================================
-        // ===== COURSE QUIZ & ASSIGNMENT MANAGEMENT =====
-        // ============================================================
-
-        // GET: /Admin/ManageQuizAssignment?courseId=5
-        [HttpGet]
-        public IActionResult ManageQuizAssignment(int courseId)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return RedirectToAction("Login", "Account");
-
-            var course = _dbHelper.GetCourseById(courseId);
-            if (course == null)
-            {
-                TempData["Error"] = "Course not found.";
-                return RedirectToAction("ManageCourses");
-            }
-
-            var vm = new CourseQuizAssignmentViewModel
-            {
-                CourseId = courseId,
-                CourseTitle = course.Title,
-                Quizzes = _dbHelper.GetQuizzesByCourse(courseId),
-                Assignments = _dbHelper.GetAssignmentsByCourse(courseId),
-                ModulesPerMilestone = _dbHelper.GetModulesPerMilestone(courseId)
-            };
-
-            return View(vm);
-        }
-
-        // POST: /Admin/CreateQuiz
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult CreateQuiz(int courseId, int moduleNumber, string title,
-            string? description, int passingScore, int timeLimitMinutes, bool isPublished)
+        public IActionResult SaveSettings(SiteSettings model)
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
 
-            if (string.IsNullOrWhiteSpace(title))
-                return Json(new { success = false, message = "Title is required." });
+            if (model.SliderIntervalSeconds < 1)
+                model.SliderIntervalSeconds = 5;
+            if (model.SliderIntervalSeconds > 60)
+                model.SliderIntervalSeconds = 60;
 
-            var quiz = new ModuleQuiz
+            // ✅ Clamp logo size (24–100)
+            if (model.LogoSizePx < 24) model.LogoSizePx = 24;
+            if (model.LogoSizePx > 100) model.LogoSizePx = 100;
+
+            // ✅ Normalize logo shape
+            var shape = (model.LogoShape ?? "circle").Trim().ToLowerInvariant();
+            if (shape != "circle" && shape != "square" && shape != "rounded")
+                shape = "circle";
+            model.LogoShape = shape;
+
+            if (_dbHelper.SaveSiteSettings(model, out string? error))
             {
-                CourseId = courseId,
-                ModuleNumber = moduleNumber,
-                Title = title.Trim(),
-                Description = description?.Trim(),
-                PassingScore = passingScore,
-                TimeLimitMinutes = timeLimitMinutes,
-                IsPublished = isPublished
-            };
-
-            if (_dbHelper.CreateModuleQuiz(quiz, out string? error))
-                return Json(new { success = true, message = "Quiz created successfully!", quizId = quiz.Id });
+                return Json(new { success = true, message = "Settings saved successfully!" });
+            }
 
             return Json(new { success = false, message = $"Failed: {error}" });
         }
 
-        // POST: /Admin/ToggleQuizPublish
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult ToggleQuizPublish(int id, bool isPublished)
+        public async Task<IActionResult> UploadHeroImage(IFormFile heroImage)
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
 
-            if (_dbHelper.ToggleQuizPublish(id, isPublished))
-                return Json(new { success = true, message = isPublished ? "Quiz published." : "Quiz unpublished." });
+            if (heroImage == null || heroImage.Length == 0)
+                return Json(new { success = false, message = "Please select an image." });
 
-            return Json(new { success = false, message = "Failed to update." });
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+            var extension = Path.GetExtension(heroImage.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(extension))
+                return Json(new { success = false, message = "Only JPG, PNG, GIF, or WEBP images are allowed." });
+
+            if (heroImage.Length > 5 * 1024 * 1024)
+                return Json(new { success = false, message = "Image size must be less than 5MB." });
+
+            try
+            {
+                var uploadPath = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "hero");
+                if (!Directory.Exists(uploadPath))
+                    Directory.CreateDirectory(uploadPath);
+
+                var fileName = $"hero_{DateTime.Now.Ticks}{extension}";
+                var filePath = Path.Combine(uploadPath, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await heroImage.CopyToAsync(stream);
+                }
+
+                var imageUrl = $"/uploads/hero/{fileName}";
+                return Json(new { success = true, message = "Image uploaded!", imageUrl });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = $"Error: {ex.Message}" });
+            }
         }
 
-        // POST: /Admin/DeleteQuiz
+        // ============================================================
+        // ===== ✅ UPLOAD TUTOR SECTION IMAGE (Home page) =====
+        // ============================================================
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult DeleteQuiz(int id)
+        public async Task<IActionResult> UploadTutorSectionImage(IFormFile tutorSectionImage)
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
 
-            if (_dbHelper.DeleteModuleQuiz(id))
-                return Json(new { success = true, message = "Quiz deleted." });
+            if (tutorSectionImage == null || tutorSectionImage.Length == 0)
+                return Json(new { success = false, message = "Please select an image." });
 
-            return Json(new { success = false, message = "Failed to delete." });
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+            var extension = Path.GetExtension(tutorSectionImage.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(extension))
+                return Json(new { success = false, message = "Only JPG, PNG, GIF, or WEBP images are allowed." });
+
+            if (tutorSectionImage.Length > 5 * 1024 * 1024)
+                return Json(new { success = false, message = "Image size must be less than 5MB." });
+
+            try
+            {
+                var uploadPath = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "tutor-section");
+                if (!Directory.Exists(uploadPath))
+                    Directory.CreateDirectory(uploadPath);
+
+                var fileName = $"tutor_{DateTime.Now.Ticks}{extension}";
+                var filePath = Path.Combine(uploadPath, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await tutorSectionImage.CopyToAsync(stream);
+                }
+
+                var imageUrl = $"/uploads/tutor-section/{fileName}";
+                return Json(new { success = true, message = "Image uploaded!", imageUrl });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = $"Error: {ex.Message}" });
+            }
         }
 
-        // GET: /Admin/ManageQuizQuestions?quizId=5
+        // ============================================================
+        // ===== ✅ UPLOAD LOGO (Navbar / Footer) =====
+        // ============================================================
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> UploadLogo(IFormFile logoImage, string target = "navbar")
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
+
+            if (logoImage == null || logoImage.Length == 0)
+                return Json(new { success = false, message = "Please select an image." });
+
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg" };
+            var extension = Path.GetExtension(logoImage.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(extension))
+                return Json(new { success = false, message = "Only JPG, PNG, GIF, WEBP, or SVG are allowed." });
+
+            if (logoImage.Length > 3 * 1024 * 1024)
+                return Json(new { success = false, message = "Logo size must be less than 3MB." });
+
+            try
+            {
+                var uploadPath = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "logos");
+                if (!Directory.Exists(uploadPath))
+                    Directory.CreateDirectory(uploadPath);
+
+                var prefix = (target == "footer") ? "footer" : "navbar";
+                var fileName = $"{prefix}_logo_{DateTime.Now.Ticks}{extension}";
+                var filePath = Path.Combine(uploadPath, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await logoImage.CopyToAsync(stream);
+                }
+
+                var imageUrl = $"/uploads/logos/{fileName}";
+                return Json(new { success = true, message = "Logo uploaded!", imageUrl });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = $"Error: {ex.Message}" });
+            }
+        }
+
+        // ============================================================
+        // ===== TUITION CIRCULAR MANAGEMENT =====
+        // ============================================================
+
         [HttpGet]
-        public IActionResult ManageQuizQuestions(int quizId)
+        public IActionResult TuitionPosts()
         {
             var role = HttpContext.Session.GetString("UserRole");
             if (role != "Admin") return RedirectToAction("Login", "Account");
 
-            var quiz = _dbHelper.GetQuizById(quizId, includeQuestions: true);
-            if (quiz == null)
+            try
             {
-                TempData["Error"] = "Quiz not found.";
-                return RedirectToAction("ManageCourses");
+                var posts = _context.TuitionPosts
+                    .Include(p => p.Applications)
+                    .OrderByDescending(p => p.PostedDate)
+                    .ToList();
+
+                ViewBag.TotalPosts = posts.Count;
+                ViewBag.OpenPosts = posts.Count(p => p.Status == "Open");
+                ViewBag.TotalApplications = _context.TuitionApplications.Count();
+                ViewBag.PendingApplications = _context.TuitionApplications.Count(a => a.Status == "Pending");
+
+                return View(posts);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("TuitionPosts error: " + ex.Message);
+                Console.WriteLine("INNER: " + ex.InnerException?.Message);
+                TempData["Error"] = "Unable to load tuition posts. Details: " +
+                                    (ex.InnerException?.Message ?? ex.Message);
+                return View(new List<TuitionPost>());
+            }
+        }
+
+        [HttpGet]
+        public IActionResult AddTuitionPost()
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin") return RedirectToAction("Login", "Account");
+
+            return View(new TuitionPost { Status = "Open", PostedDate = DateTime.UtcNow });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult AddTuitionPost(TuitionPost model)
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin") return RedirectToAction("Login", "Account");
+
+            if (!ModelState.IsValid)
+                return View(model);
+
+            try
+            {
+                model.PostedDate = DateTime.UtcNow;
+                model.Status = string.IsNullOrWhiteSpace(model.Status) ? "Open" : model.Status;
+
+                if (string.IsNullOrWhiteSpace(model.TuitionCode))
+                {
+                    var areaPart = string.IsNullOrWhiteSpace(model.Area)
+                        ? "TUITION"
+                        : new string(model.Area.Where(char.IsLetter).Take(8).ToArray()).ToUpper();
+
+                    if (string.IsNullOrWhiteSpace(areaPart))
+                        areaPart = "TUITION";
+
+                    var rand = new Random().Next(1000, 9999);
+                    model.TuitionCode = $"{areaPart}{rand}";
+                }
+
+                _context.TuitionPosts.Add(model);
+                _context.SaveChanges();
+
+                TempData["Success"] = "Tuition post added successfully!";
+                return RedirectToAction("TuitionPosts");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("AddTuitionPost ERROR: " + ex.Message);
+                var innerMsg = ex.InnerException?.InnerException?.Message
+                            ?? ex.InnerException?.Message
+                            ?? ex.Message;
+
+                ViewBag.Error = "Failed to add tuition post: " + innerMsg;
+                return View(model);
+            }
+        }
+
+        [HttpGet]
+        public IActionResult EditTuitionPost(int id)
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin") return RedirectToAction("Login", "Account");
+
+            var post = _context.TuitionPosts.Find(id);
+            if (post == null)
+            {
+                TempData["Error"] = "Tuition post not found.";
+                return RedirectToAction("TuitionPosts");
             }
 
-            var course = _dbHelper.GetCourseById(quiz.CourseId);
-            ViewBag.Course = course;
-            return View(quiz);
+            return View(post);
         }
 
-        // POST: /Admin/AddQuizQuestion
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult AddQuizQuestion(int quizId, string questionText,
-            string optionA, string optionB, string optionC, string optionD,
-            string correctOption, int marks, int questionOrder)
+        public IActionResult EditTuitionPost(TuitionPost model)
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
+            if (role != "Admin") return RedirectToAction("Login", "Account");
 
-            if (string.IsNullOrWhiteSpace(questionText))
-                return Json(new { success = false, message = "Question text is required." });
+            if (!ModelState.IsValid)
+                return View(model);
 
-            var q = new QuizQuestionItem
+            try
             {
-                QuizId = quizId,
-                QuestionText = questionText.Trim(),
-                OptionA = optionA?.Trim() ?? "",
-                OptionB = optionB?.Trim() ?? "",
-                OptionC = optionC?.Trim() ?? "",
-                OptionD = optionD?.Trim() ?? "",
-                CorrectOption = correctOption?.ToUpper() ?? "A",
-                Marks = marks <= 0 ? 1 : marks,
-                QuestionOrder = questionOrder
-            };
+                var existing = _context.TuitionPosts.Find(model.Id);
+                if (existing == null)
+                {
+                    TempData["Error"] = "Tuition post not found.";
+                    return RedirectToAction("TuitionPosts");
+                }
 
-            if (_dbHelper.AddQuizQuestion(q, out string? error))
-                return Json(new { success = true, message = "Question added successfully!" });
+                existing.Title = model.Title;
+                existing.StudentGender = model.StudentGender;
+                existing.StudentClass = model.StudentClass;
+                existing.Subjects = model.Subjects;
+                existing.DaysPerWeek = model.DaysPerWeek;
+                existing.PreferredTime = model.PreferredTime;
+                existing.Salary = model.Salary;
+                existing.Area = model.Area;
+                existing.MediaFee = model.MediaFee;
+                existing.TuitionCode = model.TuitionCode;
+                existing.SpecialNote = model.SpecialNote;
+                existing.TutorGenderPreference = model.TutorGenderPreference;
+                existing.Status = model.Status;
+                existing.UpdatedAt = DateTime.UtcNow;
 
-            return Json(new { success = false, message = $"Failed: {error}" });
-        }
+                _context.SaveChanges();
 
-        // POST: /Admin/DeleteQuizQuestion
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult DeleteQuizQuestion(int id)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
-
-            if (_dbHelper.DeleteQuizQuestion(id))
-                return Json(new { success = true, message = "Question deleted." });
-
-            return Json(new { success = false, message = "Failed to delete." });
-        }
-
-        // POST: /Admin/CreateAssignment
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult CreateAssignment(int courseId, int milestoneNumber, string title,
-            string? description, string? instructions, int totalMarks, int dueDays, bool isPublished)
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
-
-            if (string.IsNullOrWhiteSpace(title))
-                return Json(new { success = false, message = "Title is required." });
-
-            var a = new MilestoneAssignment
+                TempData["Success"] = "Tuition post updated successfully!";
+                return RedirectToAction("TuitionPosts");
+            }
+            catch (Exception ex)
             {
-                CourseId = courseId,
-                MilestoneNumber = milestoneNumber,
-                Title = title.Trim(),
-                Description = description?.Trim(),
-                Instructions = instructions?.Trim(),
-                TotalMarks = totalMarks,
-                DueDays = dueDays,
-                IsPublished = isPublished
-            };
-
-            if (_dbHelper.CreateMilestoneAssignment(a, out string? error))
-                return Json(new { success = true, message = "Assignment created successfully!", assignmentId = a.Id });
-
-            return Json(new { success = false, message = $"Failed: {error}" });
+                Console.WriteLine("EditTuitionPost error: " + ex.Message);
+                ViewBag.Error = "Failed to update tuition post: " +
+                                (ex.InnerException?.Message ?? ex.Message);
+                return View(model);
+            }
         }
 
-        // POST: /Admin/ToggleAssignmentPublish
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult ToggleAssignmentPublish(int id, bool isPublished)
+        public IActionResult ToggleTuitionStatus(int id)
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
 
-            if (_dbHelper.ToggleAssignmentPublish(id, isPublished))
-                return Json(new { success = true, message = isPublished ? "Assignment published." : "Assignment unpublished." });
+            try
+            {
+                var post = _context.TuitionPosts.Find(id);
+                if (post == null)
+                    return Json(new { success = false, message = "Post not found" });
 
-            return Json(new { success = false, message = "Failed to update." });
+                post.Status = post.Status == "Open" ? "Closed" : "Open";
+                post.UpdatedAt = DateTime.UtcNow;
+
+                _context.SaveChanges();
+
+                return Json(new
+                {
+                    success = true,
+                    message = $"Tuition marked as {post.Status}",
+                    newStatus = post.Status
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = "Error: " + ex.Message });
+            }
         }
 
-        // POST: /Admin/DeleteAssignment
+        // ✅ NEW: Toggle Show on Home Page
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult DeleteAssignment(int id)
+        public IActionResult ToggleShowOnHome(int id)
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
 
-            if (_dbHelper.DeleteMilestoneAssignment(id))
-                return Json(new { success = true, message = "Assignment deleted." });
+            try
+            {
+                var post = _context.TuitionPosts.Find(id);
+                if (post == null)
+                    return Json(new { success = false, message = "Post not found" });
 
-            return Json(new { success = false, message = "Failed to delete." });
+                post.ShowOnHome = !post.ShowOnHome;
+                post.UpdatedAt = DateTime.UtcNow;
+                _context.SaveChanges();
+
+                return Json(new
+                {
+                    success = true,
+                    message = post.ShowOnHome ? "Added to Home Page" : "Removed from Home Page",
+                    isShowing = post.ShowOnHome
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = "Error: " + ex.Message });
+            }
         }
 
-        // POST: /Admin/SetModulesPerMilestone
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult SetModulesPerMilestone(int courseId, int modulesPerMilestone)
+        public IActionResult DeleteTuitionPost(int id)
         {
             var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return Json(new { success = false, message = "Unauthorized" });
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
 
-            if (modulesPerMilestone < 1 || modulesPerMilestone > 20)
-                return Json(new { success = false, message = "Modules per milestone must be between 1 and 20." });
+            try
+            {
+                var post = _context.TuitionPosts.Find(id);
+                if (post == null)
+                    return Json(new { success = false, message = "Post not found" });
 
-            if (_dbHelper.SetModulesPerMilestone(courseId, modulesPerMilestone))
-                return Json(new { success = true, message = "Configuration saved." });
+                _context.TuitionPosts.Remove(post);
+                _context.SaveChanges();
 
-            return Json(new { success = false, message = "Failed to save." });
+                return Json(new { success = true, message = "Tuition post deleted successfully." });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = "Error: " + ex.Message });
+            }
+        }
+
+        // ============================================================
+        // ===== TUITION APPLICATIONS MANAGEMENT =====
+        // ============================================================
+
+        [HttpGet]
+        public IActionResult TuitionApplications(string status = "all")
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin") return RedirectToAction("Login", "Account");
+
+            try
+            {
+                var query = _context.TuitionApplications
+                    .Include(a => a.TuitionPost)
+                    .AsQueryable();
+
+                if (!string.IsNullOrWhiteSpace(status) && status != "all")
+                {
+                    query = query.Where(a => a.Status == status);
+                }
+
+                var apps = query
+                    .OrderByDescending(a => a.AppliedAt)
+                    .ToList();
+
+                ViewBag.CurrentStatus = status;
+                ViewBag.TotalCount = _context.TuitionApplications.Count();
+                ViewBag.PendingCount = _context.TuitionApplications.Count(a => a.Status == "Pending");
+                ViewBag.ShortlistedCount = _context.TuitionApplications.Count(a => a.Status == "Shortlisted");
+                ViewBag.SelectedCount = _context.TuitionApplications.Count(a => a.Status == "Selected");
+
+                return View(apps);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("TuitionApplications error: " + ex.Message);
+                TempData["Error"] = "Unable to load applications. Details: " +
+                                    (ex.InnerException?.Message ?? ex.Message);
+                return View(new List<TuitionApplication>());
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult UpdateApplicationStatus(int id, string status, string? adminNote)
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
+
+            try
+            {
+                var allowed = new[] { "Pending", "Shortlisted", "Selected", "Rejected" };
+                if (!allowed.Contains(status))
+                    return Json(new { success = false, message = "Invalid status." });
+
+                var app = _context.TuitionApplications.Find(id);
+                if (app == null)
+                    return Json(new { success = false, message = "Application not found." });
+
+                app.Status = status;
+                app.AdminNote = adminNote;
+                app.UpdatedAt = DateTime.UtcNow;
+
+                _context.SaveChanges();
+
+                return Json(new { success = true, message = "Application status updated successfully." });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = "Error: " + ex.Message });
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult DeleteTuitionApplication(int id)
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin")
+                return Json(new { success = false, message = "Unauthorized" });
+
+            try
+            {
+                var app = _context.TuitionApplications.Find(id);
+                if (app == null)
+                    return Json(new { success = false, message = "Application not found." });
+
+                _context.TuitionApplications.Remove(app);
+                _context.SaveChanges();
+
+                return Json(new { success = true, message = "Application deleted." });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = "Error: " + ex.Message });
+            }
         }
     }
 }

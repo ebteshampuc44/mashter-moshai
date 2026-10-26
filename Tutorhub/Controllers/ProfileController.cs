@@ -1,6 +1,5 @@
 ﻿// 📁 Controllers/ProfileController.cs
 // লোকেশন: Tutorbub/Controllers/ProfileController.cs
-// ✅ User এর TotalPoints প্রোফাইলে দেখানোর জন্য ViewBag-এ পাঠানো হচ্ছে।
 
 using Microsoft.AspNetCore.Mvc;
 using Tutorbub.Models;
@@ -71,20 +70,10 @@ namespace Tutorbub.Controllers
                 GithubProfile = user.GithubProfile ?? string.Empty,
                 PortfolioLink = user.PortfolioLink ?? string.Empty,
                 LinkedInProfile = user.LinkedInProfile ?? string.Empty,
-                ProfileImageLink = user.ProfileImageLink ?? string.Empty,
-
-                // ✅ পয়েন্ট সিস্টেম
-                TotalPoints = user.TotalPoints,
-
-                Skills = new System.Collections.Generic.List<UserSkill>(),
-                CourseOrders = new System.Collections.Generic.List<CourseOrder>(),
-                Certificates = new System.Collections.Generic.List<Certificate>()
+                ProfileImageLink = user.ProfileImageLink ?? string.Empty
             };
 
             ViewBag.IsProfileComplete = profile.IsProfileComplete();
-
-            // ✅ পয়েন্ট আলাদাভাবে ViewBag-এও পাঠানো (UI-তে সহজে ব্যবহারের জন্য)
-            ViewBag.TotalPoints = user.TotalPoints;
 
             return View(profile);
         }
@@ -99,12 +88,6 @@ namespace Tutorbub.Controllers
                 return RedirectToAction("Login", "Account");
             }
 
-            // এই ফর্মে শুধু FullName, Email, MobileNumber পোস্ট হয় — বাকি সব
-            // UserProfileViewModel প্রপার্টি (Gender, Country, EducationLevel ইত্যাদি)
-            // এই request-এ থাকেই না। আগে পুরো মডেলের ModelState.IsValid চেক করা হতো,
-            // যেটার ফলে ওই "অনুপস্থিত" ফিল্ডগুলোর কারণে validation সবসময় fail করত
-            // এবং Mobile Number ঠিকভাবে দিলেও নীরবে সেভ না হয়ে ফিরে যেত।
-            // তাই এখন শুধু এই সেকশনের প্রাসঙ্গিক ফিল্ডগুলো ম্যানুয়ালি ভ্যালিডেট করা হচ্ছে।
             if (string.IsNullOrWhiteSpace(model.FullName))
             {
                 TempData["Error"] = "Full Name is required.";
@@ -362,10 +345,7 @@ namespace Tutorbub.Controllers
                     user.PortfolioLink,
                     user.LinkedInProfile,
                     user.ProfileImageLink,
-                    user.Role,
-
-                    // ✅ পয়েন্ট সিস্টেম
-                    user.TotalPoints
+                    user.Role
                 }
             });
         }

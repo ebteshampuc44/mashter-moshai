@@ -1,14 +1,52 @@
 ﻿@model List<Tutorbub.Models.TutorProfile>
-
+@using Microsoft.AspNetCore.Http
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Find Tutor - Smart Tutor Hub";
     Layout = "_Layout";
+
+    var isLoggedIn = Context.Session.GetString("UserName") != null;
+    var userRole = Context.Session.GetString("UserRole");
+    var isTeacher = userRole == "Teacher";
+    var userId = Context.Session.GetString("UserId");
+    var userFullName = Context.Session.GetString("UserFullName") ?? Context.Session.GetString("UserName") ?? "User";
+    var userProfileImg = Context.Session.GetString("ProfileImageLink");
+
+    var posts = new List<Tutorbub.Models.TeachWantedPost>();
+    try
+    {
+        var dbHelper = new Tutorbub.Models.DatabaseHelper(Configuration);
+        posts = dbHelper.GetAllTeachWantedPosts(userId);
+    }
+    catch (Exception ex) { Console.WriteLine(ex.Message); }
 }
+
+@functions {
+    // "@[Name] text" ফরম্যাটের মেনশনকে নীল রঙে দেখায়, বাকি সব HTML-encode করে
+    private Microsoft.AspNetCore.Html.IHtmlContent RenderCommentText(string? text)
+    {
+        text ??= "";
+        var m = System.Text.RegularExpressions.Regex.Match(text, @"^@\[([^\]]+)\]\s?");
+        if (m.Success)
+        {
+            var rest = text.Substring(m.Length);
+            return new Microsoft.AspNetCore.Html.HtmlString(
+                "<span class=\"fbc-mention\">" + System.Net.WebUtility.HtmlEncode(m.Groups[1].Value) + "</span> "
+                + System.Net.WebUtility.HtmlEncode(rest));
+        }
+        return new Microsoft.AspNetCore.Html.HtmlString(System.Net.WebUtility.HtmlEncode(text));
+    }
+
+    private static string CommentIso(DateTime dt) =>
+        dt.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "Z";
+}
+
+@Html.AntiForgeryToken()
 
 <style>
     /* ======================
-           PAGE WRAPPER
-           ====================== */
+                       PAGE WRAPPER
+                       ====================== */
     .ft-page {
         background: #F3F1E7;
         padding: 40px 20px 70px;
@@ -46,92 +84,617 @@
             line-height: 1.6;
         }
 
-    .ft-search {
-        max-width: 620px;
-        margin: 24px auto 0;
-        display: flex;
+    /* ====== POST CREATE BOX ====== */
+    .post-create-card {
         background: white;
-        border-radius: 50px;
-        padding: 6px 6px 6px 22px;
-        box-shadow: 0 8px 30px rgba(31,59,44,0.08);
-        align-items: center;
-        gap: 10px;
-        border: 2px solid transparent;
-        transition: border-color 0.3s;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.04);
+        margin-bottom: 24px;
     }
 
-        .ft-search:focus-within {
-            border-color: #1F3B2C;
+    .post-create-top {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+    }
+
+    .pc-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1F3B2C, #2d5a42);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 16px;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+        .pc-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
-        .ft-search i {
-            color: #8A9188;
-            font-size: 16px;
-            flex-shrink: 0;
+    .pc-input {
+        flex: 1;
+        background: #F3F1E7;
+        border: none;
+        border-radius: 30px;
+        padding: 14px 20px;
+        font-size: 14.5px;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #5B6B5E;
+        text-align: left;
+    }
+
+        .pc-input:hover {
+            background: #E7E4D9;
         }
 
-        .ft-search input {
-            flex: 1;
-            border: none;
-            outline: none;
-            font-size: 14.5px;
-            padding: 11px 0;
-            background: transparent;
-            color: #1F3B2C;
-            min-width: 0;
+    .post-create-actions {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .pc-action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: none;
+        border: none;
+        color: #6B7568;
+        font-weight: 600;
+        font-size: 13.5px;
+        cursor: pointer;
+        padding: 8px 12px;
+        border-radius: 8px;
+        transition: background 0.2s;
+    }
+
+        .pc-action-btn:hover {
+            background: #F3F1E7;
         }
 
-        .ft-search button {
-            background: #1F3B2C;
-            color: white;
-            border: none;
-            padding: 11px 24px;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 13.5px;
-            cursor: pointer;
-            transition: opacity 0.3s;
-            display: inline-flex;
+        .pc-action-btn i.fa-images {
+            color: #2ecc71;
+        }
+
+        .pc-action-btn i.fa-video {
+            color: #e74c3c;
+        }
+
+    /* ====== POST FEED ====== */
+    .post-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .fb-post {
+        background: white;
+        border-radius: 16px;
+        border: 1px solid rgba(0,0,0,0.06);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        overflow: hidden;
+    }
+
+    .fb-post-header {
+        padding: 16px 20px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .fb-post-user {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .fb-post-user-info h6 {
+        margin: 0 0 2px;
+        font-weight: 700;
+        color: #1F3B2C;
+        font-size: 15px;
+    }
+
+    .fb-post-user-info .time {
+        font-size: 12.5px;
+        color: #8A9188;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .fb-post-content {
+        padding: 0 20px 16px;
+        font-size: 14.5px;
+        color: #1F3B2C;
+        line-height: 1.6;
+        white-space: pre-wrap;
+    }
+
+    .fb-post-media img {
+        width: 100%;
+        max-height: 400px;
+        object-fit: cover;
+        border-top: 1px solid #f0f0f0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .fb-post-stats {
+        padding: 10px 20px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        color: #6B7568;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .fb-post-actions {
+        display: flex;
+        padding: 4px;
+    }
+
+    .fb-action-btn {
+        flex: 1;
+        background: none;
+        border: none;
+        padding: 8px;
+        border-radius: 8px;
+        color: #6B7568;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: background 0.2s;
+    }
+
+        .fb-action-btn:hover {
+            background: #F3F1E7;
+        }
+
+    /* ====== POST MENU (Edit / Delete) ====== */
+    .fb-post-menu {
+        position: relative;
+    }
+
+    .fb-post-menu-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: #6B7568;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .fb-post-menu-btn:hover {
+            background: #F3F1E7;
+        }
+
+    .fb-post-menu-list {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 40px;
+        min-width: 170px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 4px 18px rgba(0,0,0,.18);
+        padding: 6px;
+        z-index: 20;
+    }
+
+        .fb-post-menu-list.show {
+            display: block;
+        }
+
+        .fb-post-menu-list button {
+            display: flex;
             align-items: center;
-            gap: 7px;
+            gap: 10px;
+            width: 100%;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1F3B2C;
+            cursor: pointer;
+            text-align: left;
         }
 
-            .ft-search button:hover {
-                opacity: 0.88;
+            .fb-post-menu-list button:hover {
+                background: #F3F1E7;
             }
 
-    .quick-chips {
+            .fb-post-menu-list button.danger {
+                color: #d93025;
+            }
+
+            .fb-post-menu-list button i {
+                width: 16px;
+                text-align: center;
+            }
+
+    /* ====== COMMENTS SECTION (Facebook style) ====== */
+    .fb-comments-area {
+        padding: 10px 16px 14px;
+        background: #fff;
+        display: none;
+        border-top: 1px solid #eceae0;
+    }
+
+        .fb-comments-area.show {
+            display: block;
+        }
+
+    .fb-comment-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .fbc {
         display: flex;
         gap: 8px;
+        align-items: flex-start;
+    }
+
+    .fbc-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #1F3B2C;
+        color: #fff;
+        display: flex;
+        align-items: center;
         justify-content: center;
-        flex-wrap: wrap;
-        margin-top: 18px;
-    }
-
-    .quick-chip {
-        background: white;
-        color: #1F3B2C;
-        border: 1.5px solid #E5E1D3;
-        padding: 7px 16px;
-        border-radius: 30px;
         font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.25s;
-        user-select: none;
+        font-weight: 700;
+        flex-shrink: 0;
+        overflow: hidden;
     }
 
-        .quick-chip:hover {
-            border-color: #1F3B2C;
-            transform: translateY(-1px);
+        .fbc-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
-        .quick-chip.active {
-            background: #1F3B2C;
-            color: white;
-            border-color: #1F3B2C;
+    .fbc.is-reply .fbc-avatar,
+    .fbc-replybox .fbc-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 11px;
+    }
+
+    .fbc-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .fbc-bubble {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+        background: #F0F2F5;
+        border-radius: 18px;
+        padding: 8px 12px;
+        box-sizing: border-box;
+    }
+
+        .fbc-bubble.has-likes {
+            margin-bottom: 8px;
         }
 
+    .fbc-name {
+        display: block;
+        font-weight: 600;
+        font-size: 13px;
+        color: #1c1e21;
+        line-height: 1.3;
+    }
+
+    .fbc-text {
+        font-size: 14.5px;
+        line-height: 1.35;
+        color: #1c1e21;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    .fbc-mention {
+        color: #1877F2;
+        font-weight: 500;
+    }
+
+    .fbc-like-badge {
+        position: absolute;
+        right: -10px;
+        bottom: -10px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.3);
+        padding: 1px 7px 1px 2px;
+        font-size: 12px;
+        color: #65676b;
+        line-height: 1.4;
+    }
+
+        .fbc-like-badge.zero {
+            display: none;
+        }
+
+        .fbc-like-badge i {
+            background: #1877F2;
+            color: #fff;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            font-size: 8.5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+    .fbc-meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 2px 12px 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #65676b;
+    }
+
+        .fbc-meta button {
+            background: none;
+            border: none;
+            padding: 0;
+            font: inherit;
+            color: inherit;
+            cursor: pointer;
+        }
+
+            .fbc-meta button:hover {
+                text-decoration: underline;
+            }
+
+        .fbc-meta .fbc-like-btn.liked {
+            color: #1877F2;
+        }
+
+        .fbc-meta .fbc-time {
+            font-weight: 400;
+            cursor: default;
+        }
+
+    .fbc-view-replies {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: none;
+        border: none;
+        padding: 6px 12px 2px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #65676b;
+        cursor: pointer;
+    }
+
+        .fbc-view-replies:hover {
+            text-decoration: underline;
+        }
+
+        .fbc-view-replies i {
+            font-size: 11px;
+        }
+
+    .fbc-replies {
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    /* Reply input + main input (pill) */
+    .fbc-input-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .fbc-pill {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #F0F2F5;
+        border-radius: 20px;
+        padding: 4px 6px 4px 14px;
+    }
+
+        .fbc-pill input {
+            flex: 1;
+            min-width: 0;
+            border: none;
+            background: transparent;
+            outline: none;
+            font-size: 14px;
+            padding: 6px 0;
+            color: #1c1e21;
+        }
+
+    .fbc-mention-tag {
+        color: #1877F2;
+        font-weight: 500;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+
+    .fbc-send {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: #1877F2;
+        cursor: pointer;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .fbc-send:hover {
+            background: #e4e6eb;
+        }
+
+        .fbc-send:disabled {
+            color: #bcc0c4;
+            cursor: default;
+        }
+
+    .fbc-replybox-hint {
+        font-size: 12px;
+        color: #65676b;
+        padding: 2px 0 0 36px;
+    }
+
+        .fbc-replybox-hint a {
+            color: #1877F2;
+            cursor: pointer;
+        }
+
+    /* ====== MODAL ====== */
+    .modal-content {
+        border-radius: 16px;
+        border: none;
+    }
+
+    .modal-header {
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .modal-title {
+        font-weight: 700;
+        color: #1F3B2C;
+        font-size: 18px;
+    }
+
+    .modal-textarea {
+        width: 100%;
+        border: none;
+        outline: none;
+        font-size: 18px;
+        resize: none;
+        min-height: 100px;
+        margin-top: 10px;
+        color: #1F3B2C;
+    }
+
+        .modal-textarea::placeholder {
+            color: #8A9188;
+        }
+
+    .modal-preview {
+        margin-top: 15px;
+        display: none;
+        position: relative;
+    }
+
+        .modal-preview img {
+            width: 100%;
+            border-radius: 12px;
+            max-height: 300px;
+            object-fit: cover;
+        }
+
+    .remove-preview {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: white;
+        border: none;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        cursor: pointer;
+    }
+
+    .modal-actions-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 15px;
+        padding: 10px;
+        border: 1px solid #E5E1D3;
+        border-radius: 12px;
+    }
+
+    .icon-btn {
+        background: none;
+        border: none;
+        font-size: 18px;
+        color: #8A9188;
+        cursor: pointer;
+        padding: 5px;
+    }
+
+        .icon-btn:hover {
+            color: #1F3B2C;
+        }
+
+    .btn-post {
+        background: #1F3B2C;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-weight: 600;
+        width: 100%;
+        margin-top: 15px;
+        transition: opacity 0.2s;
+    }
+
+        .btn-post:hover {
+            opacity: 0.9;
+        }
+
+        .btn-post:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+    /* ======================
+                           LIST HEADER & SORT
+                           ====================== */
     .list-header {
         display: flex;
         justify-content: space-between;
@@ -1036,6 +1599,53 @@
             opacity: 0.88;
         }
 
+        .ft-form .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+    /* ===== WhatsApp Number Field ===== */
+    .whatsapp-icon-input {
+        position: relative;
+    }
+
+        .whatsapp-icon-input .wa-icon {
+            position: absolute;
+            left: 14px;
+            top: 38px;
+            color: #25D366;
+            font-size: 16px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .whatsapp-icon-input input {
+            padding-left: 42px !important;
+        }
+
+    .whatsapp-same-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+        font-size: 12px;
+        color: #6B7568;
+        cursor: pointer;
+    }
+
+        .whatsapp-same-toggle input[type="checkbox"] {
+            width: auto;
+            transform: scale(1.15);
+            accent-color: #1F3B2C;
+            cursor: pointer;
+        }
+
+        .whatsapp-same-toggle label {
+            cursor: pointer;
+            margin: 0;
+            font-weight: 500;
+        }
+
     .success-panel {
         text-align: center;
         padding: 20px 10px;
@@ -1174,22 +1784,6 @@
             font-size: 14px;
         }
 
-        .ft-search {
-            flex-direction: column;
-            padding: 12px;
-            border-radius: 16px;
-        }
-
-            .ft-search button {
-                width: 100%;
-                justify-content: center;
-            }
-
-            .ft-search input {
-                text-align: center;
-                padding: 10px 0;
-            }
-
         .ft-sidebar {
             grid-template-columns: 1fr;
         }
@@ -1258,23 +1852,285 @@
                 Browse verified tutors — name, qualification, experience, and skills at a glance.
                 All communication goes through our admin team to keep your privacy safe.
             </p>
-
-            <div class="ft-search">
-                <i class="fas fa-search"></i>
-                <input type="text" id="mainSearch" placeholder="Search tutor by name, subject, or Tutor ID..." />
-                <button onclick="applySearch()"><i class="fas fa-search"></i> Search</button>
-            </div>
-
-            <div class="quick-chips">
-                <span class="quick-chip active" data-filter="all" onclick="setQuickFilter(this,'all')">All Tutors</span>
-                <span class="quick-chip" data-filter="top" onclick="setQuickFilter(this,'top')">⭐ Top Rated</span>
-                <span class="quick-chip" data-filter="verified" onclick="setQuickFilter(this,'verified')">✔ Verified</span>
-                <span class="quick-chip" data-filter="online" onclick="setQuickFilter(this,'online')">💻 Online</span>
-                <span class="quick-chip" data-filter="offline" onclick="setQuickFilter(this,'offline')">🏢 Offline</span>
-            </div>
         </div>
 
         <div class="ft-list-wrap">
+
+            <!-- ========================================== -->
+            <!-- CREATE POST BOX (Only for Teachers) -->
+            <!-- ========================================== -->
+            @if (isLoggedIn && isTeacher)
+            {
+                <div class="post-create-card">
+                    <div class="post-create-top">
+                        <div class="pc-avatar">
+                            @if (!string.IsNullOrEmpty(userProfileImg))
+                            {
+                                <img src="@userProfileImg" alt="me" />
+                            }
+                            else
+                            {
+                                @(userFullName.Length > 0 ? userFullName.Substring(0, 1).ToUpper() : "T")
+                            }
+                        </div>
+                        <div class="pc-input" onclick="openPostModal()">
+                            পোস্ট করুন, আপনি কি পড়াতে চান?
+                        </div>
+                    </div>
+                    <div class="post-create-actions">
+                        <button class="pc-action-btn" onclick="openPostModal()">
+                            <i class="fas fa-images fa-lg"></i> Photo
+                        </button>
+                        <button class="pc-action-btn" onclick="openPostModal()">
+                            <i class="fas fa-video fa-lg"></i> Video
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (isLoggedIn && !isTeacher)
+            {
+                <div class="post-create-card" style="text-align: center; padding: 15px; background: #FFF9E6; border-color: #F4C744;">
+                    <p style="margin: 0; font-size: 14px; color: #8a5a00;">
+                        <i class="fas fa-info-circle me-1"></i> শুধুমাত্র টিচার (Teacher) রা এখানে পোস্ট করতে পারবেন। আপনি টিচার হতে <a href="/Teacher/RequestForm" style="font-weight:bold; text-decoration:underline; color:#1F3B2C;">এখানে ক্লিক করুন</a>।
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="post-create-card" style="text-align: center; padding: 15px; background: #FFF9E6; border-color: #F4C744;">
+                    <p style="margin: 0; font-size: 14px; color: #8a5a00;">
+                        <i class="fas fa-info-circle me-1"></i> পোস্ট করতে অনুগ্রহ করে <a href="/Account/Login" style="font-weight:bold; text-decoration:underline; color:#1F3B2C;">লগইন করুন</a>।
+                    </p>
+                </div>
+            }
+
+            <!-- ========================================== -->
+            <!-- POST FEED (Teach Wanted) -->
+            <!-- ========================================== -->
+            <div class="list-header" style="margin-top: 30px;">
+                <h3>
+                    <i class="fas fa-chalkboard-teacher"></i> পড়াতে চাই (Teach Wanted)
+                    <span class="count-badge" id="postCountBadge">@posts.Count</span>
+                </h3>
+            </div>
+
+            <div class="post-feed" id="postFeed">
+                @if (!posts.Any())
+                {
+                    <div class="empty-state">
+                        <div class="es-icon"><i class="fas fa-chalkboard-teacher"></i></div>
+                        <h4>কোনো পোস্ট পাওয়া যায়নি</h4>
+                        <p>বর্তমানে কোনো টিচার পোস্ট করেননি।</p>
+                    </div>
+                }
+                else
+                {
+                    foreach (var post in posts)
+                    {
+                        <div class="fb-post" id="post-@post.Id">
+                            <!-- Header -->
+                            <div class="fb-post-header">
+                                <div class="fb-post-user">
+                                    <div class="pc-avatar">
+                                        @if (!string.IsNullOrEmpty(post.UserProfileImage))
+                                        {
+                                            <img src="@post.UserProfileImage" alt="@post.UserName" />
+                                        }
+                                        else
+                                        {
+                                            @(post.UserFullName.Length > 0 ? post.UserFullName.Substring(0, 1).ToUpper() : "T")
+                                        }
+                                    </div>
+                                    <div class="fb-post-user-info">
+                                        <h6>@post.UserFullName <span class="badge bg-success" style="font-size:10px;">Teacher</span></h6>
+                                        <div class="time">
+                                            <i class="far fa-clock"></i> @post.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @{
+                                    var isPostOwner = isLoggedIn && post.UserId.ToString() == userId;
+                                    var canDeletePost = isPostOwner || (isLoggedIn && userRole == "Admin");
+                                }
+                                @if (canDeletePost)
+                                {
+                                    <div class="fb-post-menu">
+                                        <button type="button" class="fb-post-menu-btn" onclick="togglePostMenu(event, @post.Id)" title="More options">
+                                            <i class="fas fa-ellipsis-h"></i>
+                                        </button>
+                                        <div class="fb-post-menu-list" id="post-menu-@post.Id">
+                                            @if (isPostOwner)
+                                            {
+                                                <button type="button" onclick="openEditPost(@post.Id)"><i class="fas fa-pen"></i> Edit post</button>
+                                            }
+                                            <button type="button" class="danger" onclick="openDeletePost(@post.Id)"><i class="fas fa-trash"></i> Delete post</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <!-- Content -->
+                            <div class="fb-post-content" id="post-content-@post.Id">@post.Content</div>
+
+                            <!-- Image -->
+                            <div class="fb-post-media" id="post-media-@post.Id">
+                                @if (!string.IsNullOrEmpty(post.ImageUrl))
+                                {
+                                    <img src="@post.ImageUrl" alt="Post Image" />
+                                }
+                            </div>
+
+                            <!-- Stats -->
+                            <div class="fb-post-stats">
+                                <span><i class="fas fa-thumbs-up text-primary"></i> <span id="like-count-@post.Id">@post.LikeCount</span> Likes</span>
+                                <span id="comment-count-@post.Id">@post.Comments.Sum(c => 1 + c.Replies.Count) Comments</span>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="fb-post-actions">
+                                @if (isLoggedIn)
+                                {
+                                    <button class="fb-action-btn" onclick="toggleLike(@post.Id)">
+                                        <i class="far fa-thumbs-up" id="like-icon-@post.Id" style="color:#1F3B2C;"></i> Like
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="fb-action-btn" onclick="alert('লাইক করতে লগইন করুন!')">
+                                        <i class="far fa-thumbs-up"></i> Like
+                                    </button>
+                                }
+                                <button class="fb-action-btn" onclick="toggleComments(@post.Id)">
+                                    <i class="far fa-comment"></i> Comment
+                                </button>
+                            </div>
+
+                            <!-- Comments Area (Facebook style) -->
+                            <div class="fb-comments-area" id="comments-@post.Id">
+                                <div class="fb-comment-list" id="comment-list-@post.Id">
+                                    @foreach (var comment in post.Comments)
+                                    {
+                                        <div class="fbc" id="fbc-@comment.Id" data-id="@comment.Id" data-root="@comment.Id" data-name="@comment.UserFullName">
+                                            <div class="fbc-avatar">
+                                                @if (!string.IsNullOrEmpty(comment.UserProfileImage))
+                                                {
+                                                    <img src="@comment.UserProfileImage" alt="user" />
+                                                }
+                                                else
+                                                {
+                                                    @(comment.UserFullName.Length > 0 ? comment.UserFullName.Substring(0, 1).ToUpper() : "U")
+                                                }
+                                            </div>
+                                            <div class="fbc-main">
+                                                <div class="fbc-bubble @(comment.LikeCount > 0 ? "has-likes" : "")">
+                                                    <span class="fbc-name">@comment.UserFullName</span>
+                                                    <div class="fbc-text">@RenderCommentText(comment.Content)</div>
+                                                    <span class="fbc-like-badge @(comment.LikeCount > 0 ? "" : "zero")"><i class="fas fa-thumbs-up"></i><span class="fbc-like-n">@comment.LikeCount</span></span>
+                                                </div>
+                                                <div class="fbc-meta">
+                                                    @if (isLoggedIn)
+                                                    {
+                                                        <button type="button" class="fbc-like-btn @(comment.IsLikedByMe ? "liked" : "")" onclick="fbcToggleLike(this, @comment.Id)">Like</button>
+                                                        <button type="button" onclick="fbcOpenReply(@post.Id, @comment.Id, @comment.Id)">Reply</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" onclick="alert('লাইক করতে লগইন করুন!')">Like</button>
+                                                        <button type="button" onclick="alert('রিপ্লাই করতে লগইন করুন!')">Reply</button>
+                                                    }
+                                                    <span class="fbc-time" data-utc="@CommentIso(comment.CreatedAt)" title="@comment.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")">@comment.CreatedAt.ToString("dd MMM")</span>
+                                                </div>
+
+                                                <div class="fbc-replies-wrap">
+                                                    @if (comment.Replies != null && comment.Replies.Any())
+                                                    {
+                                                        <button type="button" class="fbc-view-replies" id="fbc-vr-@comment.Id" onclick="fbcShowReplies(@comment.Id)">
+                                                            <i class="fas fa-share fa-flip-vertical"></i>
+                                                            View @comment.Replies.Count @(comment.Replies.Count == 1 ? "reply" : "replies")
+                                                        </button>
+                                                    }
+                                                    <div class="fbc-replies" id="fbc-replies-@comment.Id">
+                                                        @foreach (var reply in comment.Replies ?? new List<Tutorbub.Models.TeachWantedComment>())
+                                                        {
+                                                            <div class="fbc is-reply" id="fbc-@reply.Id" data-id="@reply.Id" data-root="@comment.Id" data-name="@reply.UserFullName">
+                                                                <div class="fbc-avatar">
+                                                                    @if (!string.IsNullOrEmpty(reply.UserProfileImage))
+                                                                    {
+                                                                        <img src="@reply.UserProfileImage" alt="user" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        @(reply.UserFullName.Length > 0 ? reply.UserFullName.Substring(0, 1).ToUpper() : "U")
+                                                                    }
+                                                                </div>
+                                                                <div class="fbc-main">
+                                                                    <div class="fbc-bubble @(reply.LikeCount > 0 ? "has-likes" : "")">
+                                                                        <span class="fbc-name">@reply.UserFullName</span>
+                                                                        <div class="fbc-text">@RenderCommentText(reply.Content)</div>
+                                                                        <span class="fbc-like-badge @(reply.LikeCount > 0 ? "" : "zero")"><i class="fas fa-thumbs-up"></i><span class="fbc-like-n">@reply.LikeCount</span></span>
+                                                                    </div>
+                                                                    <div class="fbc-meta">
+                                                                        @if (isLoggedIn)
+                                                                        {
+                                                                            <button type="button" class="fbc-like-btn @(reply.IsLikedByMe ? "liked" : "")" onclick="fbcToggleLike(this, @reply.Id)">Like</button>
+                                                                            <button type="button" onclick="fbcOpenReply(@post.Id, @comment.Id, @reply.Id)">Reply</button>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <button type="button" onclick="alert('লাইক করতে লগইন করুন!')">Like</button>
+                                                                            <button type="button" onclick="alert('রিপ্লাই করতে লগইন করুন!')">Reply</button>
+                                                                        }
+                                                                        <span class="fbc-time" data-utc="@CommentIso(reply.CreatedAt)" title="@reply.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")">@reply.CreatedAt.ToString("dd MMM")</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+
+                                @if (isLoggedIn)
+                                {
+                                    <div class="fbc-input-row">
+                                        <div class="fbc-avatar">
+                                            @if (!string.IsNullOrEmpty(userProfileImg))
+                                            {
+                                                <img src="@userProfileImg" alt="me" />
+                                            }
+                                            else
+                                            {
+                                                @(userFullName.Length > 0 ? userFullName.Substring(0, 1).ToUpper() : "U")
+                                            }
+                                        </div>
+                                        <div class="fbc-pill">
+                                            <input type="text" id="comment-input-@post.Id" placeholder="Write a comment..." maxlength="2000" onkeydown="handleCommentEnter(event, @post.Id)" />
+                                            <button type="button" class="fbc-send" id="comment-send-@post.Id" onclick="submitComment(@post.Id)" title="Send">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="text-align:center; font-size:13px; color:#8A9188;">
+                                        কমেন্ট করতে <a href="/Account/Login" style="color:#1F3B2C; font-weight:bold;">লগইন করুন</a>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <hr style="margin: 40px 0;" />
+
+            <!-- ========================================== -->
+            <!-- TUTOR LIST -->
+            <!-- ========================================== -->
             <div class="list-header">
                 <h3>
                     <i class="fas fa-user-graduate"></i> Our Tutors
@@ -1292,6 +2148,7 @@
             </div>
 
             <div id="tutorList"></div>
+
         </div>
 
         <aside class="ft-sidebar">
@@ -1333,7 +2190,113 @@
     </div>
 </section>
 
-<!-- MODALS -->
+<!-- ========================================== -->
+<!-- CREATE POST MODAL -->
+<!-- ========================================== -->
+<div class="modal fade" id="createPostModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title w-100 text-center">পোস্ট তৈরি করুন</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex gap-2 align-items-center mb-3">
+                    <div class="pc-avatar">
+                        @if (!string.IsNullOrEmpty(userProfileImg))
+                        {
+                            <img src="@userProfileImg" alt="me" />
+                        }
+                        else
+                        {
+                            @(userFullName.Length > 0 ? userFullName.Substring(0, 1).ToUpper() : "T")
+                        }
+                    </div>
+                    <div>
+                        <h6 class="mb-0 fw-bold">@userFullName</h6>
+                        <span class="badge bg-success" style="font-size:10px;">Teacher</span>
+                    </div>
+                </div>
+
+                <textarea id="postContentInput" class="modal-textarea" placeholder="পড়াতে চাই... (আপনার অভিজ্ঞতা ও বিষয় সম্পর্কে লিখুন)" oninput="checkPostBtn()"></textarea>
+
+                <div class="modal-preview" id="imagePreviewBox">
+                    <button type="button" class="remove-preview" onclick="removePostImage()"><i class="fas fa-times"></i></button>
+                    <img id="imagePreviewImg" src="" alt="Preview" />
+                </div>
+
+                <div class="modal-actions-bottom">
+                    <span style="font-size:14px; font-weight:600; color:#1F3B2C;">Add to your post</span>
+                    <div>
+                        <label for="postImageInput" class="icon-btn" style="cursor:pointer; margin:0;">
+                            <i class="fas fa-images" style="color:#2ecc71;"></i>
+                        </label>
+                        <input type="file" id="postImageInput" accept="image/*" style="display:none;" onchange="previewPostImage(this)" />
+
+                        <button class="icon-btn"><i class="fas fa-smile" style="color:#f39c12;"></i></button>
+                    </div>
+                </div>
+
+                <button class="btn-post" id="submitPostBtn" onclick="submitPost()" disabled>Post</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- EDIT POST MODAL -->
+<!-- ========================================== -->
+<div class="modal fade" id="editPostModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title w-100 text-center">পোস্ট এডিট করুন</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <textarea id="editPostContent" class="modal-textarea" placeholder="পড়াতে চাই..." oninput="checkEditBtn()"></textarea>
+
+                <div class="modal-preview" id="editImgBox">
+                    <button type="button" class="remove-preview" onclick="removeEditImage()"><i class="fas fa-times"></i></button>
+                    <img id="editImgPreview" src="" alt="Preview" />
+                </div>
+
+                <div class="modal-actions-bottom">
+                    <span style="font-size:14px; font-weight:600; color:#1F3B2C;">Photo</span>
+                    <div>
+                        <label for="editImageInput" class="icon-btn" style="cursor:pointer; margin:0;">
+                            <i class="fas fa-images" style="color:#2ecc71;"></i>
+                        </label>
+                        <input type="file" id="editImageInput" accept="image/*" style="display:none;" onchange="previewEditImage(this)" />
+                    </div>
+                </div>
+
+                <button class="btn-post" id="saveEditBtn" onclick="submitEditPost()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- DELETE POST MODAL -->
+<!-- ========================================== -->
+<div class="modal fade" id="deletePostModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:400px;">
+        <div class="modal-content">
+            <div class="modal-body text-center p-4">
+                <div style="font-size:42px; color:#d93025; margin-bottom:8px;"><i class="fas fa-trash-alt"></i></div>
+                <h5 style="font-weight:700; color:#1F3B2C;">পোস্টটি ডিলিট করবেন?</h5>
+                <p style="color:#6B7568; font-size:14px; margin-bottom:20px;">পোস্ট, এর ছবি এবং সব কমেন্ট স্থায়ীভাবে মুছে যাবে। এটি আর ফেরত আনা যাবে না।</p>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-light flex-fill" data-bs-dismiss="modal" style="font-weight:600;">Cancel</button>
+                    <button type="button" class="btn flex-fill" id="confirmDeleteBtn" onclick="confirmDeletePost()" style="background:#d93025; color:#fff; font-weight:600;">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODALS for Tutor Profile & Requests -->
 <div class="modal fade ft-modal" id="tutorProfileModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
@@ -1385,7 +2348,6 @@
 @section Scripts {
     @using System.Text.Json
 @{
-        // JSON serialize with camelCase so JS properties match
         var jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -1394,19 +2356,488 @@
     }
 
     <script>
-        // Razor থেকে Tutor ডেটা camelCase-এ inject
         window.allTutors = @Html.Raw(tutorsJson);
 
-        console.log('✅ Total tutors loaded:', window.allTutors.length);
-        if (window.allTutors.length > 0) {
-            console.log('First tutor:', window.allTutors[0]);
+        // ============================================================
+        // POST SYSTEM JS
+        // ============================================================
+        var postImageUrl = null;
+
+        function openPostModal() {
+            document.getElementById('postContentInput').value = '';
+            removePostImage();
+            checkPostBtn();
+            new bootstrap.Modal(document.getElementById('createPostModal')).show();
         }
 
+        function checkPostBtn() {
+            var content = document.getElementById('postContentInput').value.trim();
+            var btn = document.getElementById('submitPostBtn');
+            btn.disabled = (content.length === 0 && !postImageUrl);
+        }
+
+        function previewPostImage(input) {
+            if (input.files && input.files[0]) {
+                var file = input.files[0];
+                if (file.size > 5 * 1024 * 1024) { alert('Image must be less than 5MB'); return; }
+
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    document.getElementById('imagePreviewImg').src = e.target.result;
+                    document.getElementById('imagePreviewBox').style.display = 'block';
+                    checkPostBtn();
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function removePostImage() {
+            document.getElementById('postImageInput').value = '';
+            document.getElementById('imagePreviewBox').style.display = 'none';
+            document.getElementById('imagePreviewImg').src = '';
+            checkPostBtn();
+        }
+
+        async function submitPost() {
+            var content = document.getElementById('postContentInput').value.trim();
+            var btn = document.getElementById('submitPostBtn');
+            var originalText = btn.innerText;
+
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting...';
+            btn.disabled = true;
+
+            var formData = new FormData();
+            formData.append('content', content);
+
+            var fileInput = document.getElementById('postImageInput');
+            if (fileInput.files.length > 0) {
+                formData.append('imageFile', fileInput.files[0]);
+            }
+
+            var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            formData.append('__RequestVerificationToken', token);
+
+            try {
+                var res = await fetch('/FindTutor/CreateTeachPost', { method: 'POST', body: formData });
+                var data = await res.json();
+
+                if (data.success) {
+                    location.reload(); // Reload to show the new post
+                } else {
+                    alert(data.message || 'Failed to post.');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // ============================================================
+        // POST EDIT / DELETE
+        // ============================================================
+        var editPostId = null, editRemoveImg = false, deletePostId = null;
+
+        window.togglePostMenu = function (e, postId) {
+            e.stopPropagation();
+            var menu = document.getElementById('post-menu-' + postId);
+            var wasOpen = menu.classList.contains('show');
+            closePostMenus();
+            if (!wasOpen) menu.classList.add('show');
+        };
+
+        function closePostMenus() {
+            document.querySelectorAll('.fb-post-menu-list.show').forEach(function (m) { m.classList.remove('show'); });
+        }
+        document.addEventListener('click', closePostMenus);
+
+        window.openEditPost = function (postId) {
+            closePostMenus();
+            editPostId = postId;
+            editRemoveImg = false;
+
+            document.getElementById('editPostContent').value =
+                document.getElementById('post-content-' + postId).textContent.trim();
+            document.getElementById('editImageInput').value = '';
+
+            var img = document.querySelector('#post-media-' + postId + ' img');
+            var box = document.getElementById('editImgBox');
+            if (img) {
+                document.getElementById('editImgPreview').src = img.getAttribute('src');
+                box.style.display = 'block';
+            } else {
+                document.getElementById('editImgPreview').src = '';
+                box.style.display = 'none';
+            }
+
+            checkEditBtn();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('editPostModal')).show();
+        };
+
+        window.checkEditBtn = function () {
+            var hasText = document.getElementById('editPostContent').value.trim().length > 0;
+            var hasImg = document.getElementById('editImgBox').style.display === 'block';
+            document.getElementById('saveEditBtn').disabled = !(hasText || hasImg);
+        };
+
+        window.previewEditImage = function (input) {
+            if (!input.files || !input.files[0]) return;
+            var file = input.files[0];
+            if (file.size > 5 * 1024 * 1024) { alert('Image must be less than 5MB'); input.value = ''; return; }
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                document.getElementById('editImgPreview').src = e.target.result;
+                document.getElementById('editImgBox').style.display = 'block';
+                editRemoveImg = false;
+                checkEditBtn();
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.removeEditImage = function () {
+            document.getElementById('editImageInput').value = '';
+            document.getElementById('editImgPreview').src = '';
+            document.getElementById('editImgBox').style.display = 'none';
+            editRemoveImg = true;
+            checkEditBtn();
+        };
+
+        window.submitEditPost = async function () {
+            var btn = document.getElementById('saveEditBtn');
+            var original = btn.innerText;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            btn.disabled = true;
+
+            var fd = new FormData();
+            fd.append('postId', editPostId);
+            fd.append('content', document.getElementById('editPostContent').value.trim());
+            fd.append('removeImage', editRemoveImg ? 'true' : 'false');
+            var f = document.getElementById('editImageInput');
+            if (f.files.length > 0) fd.append('imageFile', f.files[0]);
+            fd.append('__RequestVerificationToken', fbcToken());
+
+            try {
+                var res = await fetch('/FindTutor/EditTeachPost', { method: 'POST', body: fd });
+                var data = await res.json();
+                if (data.success) {
+                    document.getElementById('post-content-' + editPostId).textContent = data.content;
+                    var media = document.getElementById('post-media-' + editPostId);
+                    media.innerHTML = data.imageUrl ? '<img src="' + fbcEsc(data.imageUrl) + '" alt="Post Image" />' : '';
+                    bootstrap.Modal.getInstance(document.getElementById('editPostModal')).hide();
+                } else {
+                    alert(data.message || 'Failed to update post.');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+            btn.innerHTML = original;
+            checkEditBtn();
+        };
+
+        window.openDeletePost = function (postId) {
+            closePostMenus();
+            deletePostId = postId;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('deletePostModal')).show();
+        };
+
+        window.confirmDeletePost = async function () {
+            var btn = document.getElementById('confirmDeleteBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            var fd = new FormData();
+            fd.append('postId', deletePostId);
+            fd.append('__RequestVerificationToken', fbcToken());
+
+            try {
+                var res = await fetch('/FindTutor/DeleteTeachPost', { method: 'POST', body: fd });
+                var data = await res.json();
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('deletePostModal')).hide();
+                    var el = document.getElementById('post-' + deletePostId);
+                    if (el) {
+                        el.style.transition = 'opacity .3s, transform .3s';
+                        el.style.opacity = '0';
+                        el.style.transform = 'scale(.97)';
+                        setTimeout(function () { el.remove(); }, 300);
+                    }
+                } else {
+                    alert(data.message || 'Failed to delete post.');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+            btn.disabled = false;
+            btn.innerText = 'Delete';
+        };
+
+        // ============================================================
+        // FACEBOOK-STYLE COMMENTS & REPLIES
+        // ============================================================
+        window.fbcMe = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { name = userFullName, img = userProfileImg ?? "" }));
+
+        function toggleComments(postId) {
+            var area = document.getElementById('comments-' + postId);
+            if (area.classList.contains('show')) {
+                area.classList.remove('show');
+            } else {
+                area.classList.add('show');
+                var inp = document.getElementById('comment-input-' + postId);
+                if (inp) inp.focus();
+            }
+        }
+
+        function handleCommentEnter(e, postId) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitComment(postId);
+            }
+        }
+
+        function fbcEsc(t) {
+            return String(t == null ? '' : t)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function fbcToken() {
+            return document.querySelector('input[name="__RequestVerificationToken"]').value;
+        }
+
+        function fbcAvatarHtml(img, name) {
+            if (img) return '<img src="' + fbcEsc(img) + '" alt="user" />';
+            return fbcEsc((name || 'U').charAt(0).toUpperCase());
+        }
+
+        // "@@[Name] text" -> নীল মেনশন
+        function fbcRenderText(content) {
+            var s = fbcEsc(content);
+            var m = s.match(/^@@\[([^\]]+)\]\s?/);
+            if (m) return '<span class="fbc-mention">' + m[1] + '</span> ' + s.slice(m[0].length);
+            return s;
+        }
+
+        function fbcRelTime(iso) {
+            var t = new Date(iso).getTime();
+            if (isNaN(t)) return null;
+            var sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+            if (sec < 60) return 'Just now';
+            var min = Math.floor(sec / 60); if (min < 60) return min + 'm';
+            var hr = Math.floor(min / 60); if (hr < 24) return hr + 'h';
+            var day = Math.floor(hr / 24); if (day < 7) return day + 'd';
+            var wk = Math.floor(day / 7); if (day < 365) return wk + 'w';
+            return Math.floor(day / 365) + 'y';
+        }
+
+        function fbcRefreshTimes() {
+            document.querySelectorAll('.fbc-time[data-utc]').forEach(function (el) {
+                var r = fbcRelTime(el.getAttribute('data-utc'));
+                if (r) el.textContent = r;
+            });
+        }
+
+        function fbcBuild(c, isReply, postId, rootId) {
+            var liked = c.isLiked ? ' liked' : '';
+            var zero = (c.likeCount > 0) ? '' : ' zero';
+            var h = ''
+                + '<div class="fbc' + (isReply ? ' is-reply' : '') + '" id="fbc-' + c.id + '" data-id="' + c.id + '" data-root="' + rootId + '" data-name="' + fbcEsc(c.userFullName) + '">'
+                + '  <div class="fbc-avatar">' + fbcAvatarHtml(c.userProfileImage, c.userFullName) + '</div>'
+                + '  <div class="fbc-main">'
+                + '    <div class="fbc-bubble' + (c.likeCount > 0 ? ' has-likes' : '') + '">'
+                + '      <span class="fbc-name">' + fbcEsc(c.userFullName) + '</span>'
+                + '      <div class="fbc-text">' + fbcRenderText(c.content) + '</div>'
+                + '      <span class="fbc-like-badge' + zero + '"><i class="fas fa-thumbs-up"></i><span class="fbc-like-n">' + (c.likeCount || 0) + '</span></span>'
+                + '    </div>'
+                + '    <div class="fbc-meta">'
+                + '      <button type="button" class="fbc-like-btn' + liked + '" onclick="fbcToggleLike(this, ' + c.id + ')">Like</button>'
+                + '      <button type="button" onclick="fbcOpenReply(' + postId + ', ' + rootId + ', ' + c.id + ')">Reply</button>'
+                + '      <span class="fbc-time" data-utc="' + fbcEsc(c.createdAtUtc) + '">Just now</span>'
+                + '    </div>';
+            if (!isReply) {
+                h += '    <div class="fbc-replies-wrap"><div class="fbc-replies" id="fbc-replies-' + c.id + '"></div></div>';
+            }
+            h += '  </div></div>';
+            return h;
+        }
+
+        function fbcBumpCount(postId) {
+            var el = document.getElementById('comment-count-' + postId);
+            if (!el) return;
+            var n = parseInt(el.textContent, 10) || 0;
+            el.textContent = (n + 1) + ' Comments';
+        }
+
+        async function fbcSend(postId, content, parentId) {
+            var fd = new FormData();
+            fd.append('postId', postId);
+            fd.append('content', content);
+            if (parentId) fd.append('parentId', parentId);
+            fd.append('__RequestVerificationToken', fbcToken());
+            var res = await fetch('/FindTutor/AddTeachComment', { method: 'POST', body: fd });
+            return await res.json();
+        }
+
+        // ---------- মেইন কমেন্ট ----------
+        window.submitComment = async function (postId) {
+            var input = document.getElementById('comment-input-' + postId);
+            var btn = document.getElementById('comment-send-' + postId);
+            var content = input.value.trim();
+            if (!content) return;
+
+            input.disabled = true; if (btn) btn.disabled = true;
+            try {
+                var data = await fbcSend(postId, content, null);
+                if (data.success) {
+                    var list = document.getElementById('comment-list-' + postId);
+                    list.insertAdjacentHTML('beforeend', fbcBuild(data.comment, false, postId, data.comment.id));
+                    input.value = '';
+                    fbcBumpCount(postId);
+                    fbcRefreshTimes();
+                } else {
+                    alert(data.message || 'Failed to comment.');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+            input.disabled = false; if (btn) btn.disabled = false;
+            input.focus();
+        };
+
+        // ---------- রিপ্লাই ----------
+        window.fbcShowReplies = function (rootId) {
+            var list = document.getElementById('fbc-replies-' + rootId);
+            if (list) list.style.display = 'flex';
+            var vr = document.getElementById('fbc-vr-' + rootId);
+            if (vr) vr.style.display = 'none';
+        };
+
+        window.fbcCloseReplyBoxes = function (postId) {
+            document.querySelectorAll('#post-' + postId + ' .fbc-replybox').forEach(function (b) { b.remove(); });
+        };
+
+        // postId, rootId (মেইন কমেন্ট), targetId (যে কমেন্ট/রিপ্লাইয়ে Reply চাপা হয়েছে)
+        window.fbcOpenReply = function (postId, rootId, targetId) {
+            var target = document.getElementById('fbc-' + targetId);
+            if (!target) return;
+            var targetName = target.getAttribute('data-name') || '';
+            var isNested = (targetId !== rootId);
+
+            fbcCloseReplyBoxes(postId);
+            fbcShowReplies(rootId);
+
+            var box = document.createElement('div');
+            box.className = 'fbc-input-row fbc-replybox';
+            box.innerHTML = ''
+                + '<div class="fbc-avatar">' + fbcAvatarHtml(window.fbcMe.img, window.fbcMe.name) + '</div>'
+                + '<div class="fbc-pill">'
+                + (isNested ? '<span class="fbc-mention-tag">' + fbcEsc(targetName) + '</span>' : '')
+                + '  <input type="text" maxlength="2000" placeholder="' + (isNested ? '' : 'Reply to ' + fbcEsc(targetName) + '...') + '" />'
+                + '  <button type="button" class="fbc-send" title="Send"><i class="fas fa-paper-plane"></i></button>'
+                + '</div>';
+
+            var list = document.getElementById('fbc-replies-' + rootId);
+            if (isNested) target.insertAdjacentElement('afterend', box);
+            else list.appendChild(box);
+
+            var input = box.querySelector('input');
+            var send = box.querySelector('.fbc-send');
+
+            async function doSend() {
+                var text = input.value.trim();
+                if (!text) return;
+                var content = (isNested ? '@@[' + targetName + '] ' : '') + text;
+                input.disabled = true; send.disabled = true;
+                try {
+                    var data = await fbcSend(postId, content, targetId);
+                    if (data.success) {
+                        box.insertAdjacentHTML('beforebegin', fbcBuild(data.comment, true, postId, rootId));
+                        box.remove();
+                        fbcBumpCount(postId);
+                        fbcRefreshTimes();
+                        return;
+                    }
+                    alert(data.message || 'Failed to reply.');
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+                input.disabled = false; send.disabled = false; input.focus();
+            }
+
+            send.addEventListener('click', doSend);
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); doSend(); }
+                else if (e.key === 'Escape') { box.remove(); }
+            });
+            input.focus();
+        };
+
+        // ---------- কমেন্ট লাইক ----------
+        window.fbcToggleLike = async function (btn, commentId) {
+            var fd = new FormData();
+            fd.append('commentId', commentId);
+            fd.append('__RequestVerificationToken', fbcToken());
+            btn.disabled = true;
+            try {
+                var res = await fetch('/FindTutor/ToggleTeachCommentLike', { method: 'POST', body: fd });
+                var data = await res.json();
+                if (data.success) {
+                    btn.classList.toggle('liked', data.isLiked);
+                    var el = document.getElementById('fbc-' + commentId);
+                    var bubble = el.querySelector('.fbc-bubble');
+                    var badge = bubble.querySelector('.fbc-like-badge');
+                    badge.querySelector('.fbc-like-n').textContent = data.count;
+                    badge.classList.toggle('zero', data.count < 1);
+                    bubble.classList.toggle('has-likes', data.count > 0);
+                } else {
+                    alert(data.message || 'Failed.');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+            btn.disabled = false;
+        };
+
+        document.addEventListener('DOMContentLoaded', function () {
+            fbcRefreshTimes();
+            setInterval(fbcRefreshTimes, 60000);
+        });
+
+        async function toggleLike(postId) {
+            var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            var formData = new FormData();
+            formData.append('postId', postId);
+            formData.append('__RequestVerificationToken', token);
+
+            try {
+                var res = await fetch('/FindTutor/ToggleTeachLike', { method: 'POST', body: formData });
+                var data = await res.json();
+                if (data.success) {
+                    var countEl = document.getElementById('like-count-' + postId);
+                    var iconEl = document.getElementById('like-icon-' + postId);
+
+                    countEl.innerText = data.count;
+                    if (data.isLiked) {
+                        iconEl.className = 'fas fa-thumbs-up';
+                        iconEl.style.color = '#1877F2';
+                    } else {
+                        iconEl.className = 'far fa-thumbs-up';
+                        iconEl.style.color = '#1F3B2C';
+                    }
+                }
+            } catch (err) {
+                console.log(err);
+            }
+        }
+
+        // ============================================================
+        // EXISTING TUTOR LOGIC
+        // ============================================================
         (function () {
             'use strict';
 
             var allTutors = window.allTutors || [];
-            var currentQuickFilter = 'all';
 
             function stars(rating) {
                 var full = Math.floor(rating);
@@ -1441,6 +2872,43 @@
                 if (m) m.hide();
             }
 
+            function getToken() {
+                var t = document.querySelector('input[name="__RequestVerificationToken"]');
+                return t ? t.value : '';
+            }
+
+            function isValidBdPhone(num) {
+                return /^01[3-9]\d{8}$/.test(String(num || '').trim());
+            }
+
+            window.toggleSameWhatsApp = function (phoneId, waId, checkbox) {
+                var phone = document.getElementById(phoneId);
+                var wa = document.getElementById(waId);
+                if (!phone || !wa) return;
+
+                if (checkbox.checked) {
+                    wa.value = phone.value;
+                    wa.readOnly = true;
+                    wa.style.background = '#F3F1E7';
+                } else {
+                    wa.readOnly = false;
+                    wa.style.background = '';
+                }
+            };
+
+            document.addEventListener('input', function (e) {
+                var id = e.target.id || '';
+                if (id === 'rtPhone' || id === 'ntPhone' || id === 'atPhone') {
+                    var waId = id.replace('Phone', 'WhatsApp');
+                    var cbId = id.replace('Phone', 'SameWhatsApp');
+                    var cb = document.getElementById(cbId);
+                    var wa = document.getElementById(waId);
+                    if (cb && cb.checked && wa) {
+                        wa.value = e.target.value;
+                    }
+                }
+            });
+
             function createRow(t) {
                 var verifiedTick = t.isVerified
                     ? '<div class="v-tick" title="Verified Tutor"><i class="fas fa-check"></i></div>'
@@ -1468,13 +2936,13 @@
                     + '<div class="tutor-row">'
                     + '  <div class="tr-avatar">'
                     + '    <div class="avatar-circle">' + avatarContent + '</div>'
-                    +      verifiedTick
+                    + verifiedTick
                     + '  </div>'
                     + '  <div class="tr-info">'
                     + '    <div class="tr-name-line">'
                     + '      <h4 class="tr-name">' + escapeHtml(t.fullName) + '</h4>'
                     + '      <span class="tr-id">' + escapeHtml(t.tutorId) + '</span>'
-                    +        topBadge
+                    + topBadge
                     + '    </div>'
                     + '    <div class="tr-rating-line">'
                     + '      <span class="stars">' + stars(t.rating) + '</span>'
@@ -1489,8 +2957,8 @@
                     + '    </div>'
                     + '    <div class="tr-tags">'
                     + '      <span class="tr-tag mode"><i class="fas ' + modeIcon + ' me-1"></i>' + escapeHtml(t.teachingMode) + '</span>'
-                    +        classTags
-                    +        moreClasses
+                    + classTags
+                    + moreClasses
                     + '    </div>'
                     + '  </div>'
                     + '  <div class="tr-actions">'
@@ -1530,43 +2998,18 @@
             }
 
             function applySearch() {
-                var query = document.getElementById('mainSearch').value.toLowerCase().trim();
                 var sort = document.getElementById('sortSelect').value;
 
                 var list = allTutors.slice();
 
-                if (query) {
-                    list = list.filter(function (t) {
-                        return t.fullName.toLowerCase().indexOf(query) !== -1
-                            || t.tutorId.toLowerCase().indexOf(query) !== -1
-                            || (t.subjects || []).some(function (s) { return s.toLowerCase().indexOf(query) !== -1; })
-                            || (t.qualification || '').toLowerCase().indexOf(query) !== -1
-                            || (t.institution || '').toLowerCase().indexOf(query) !== -1;
-                    });
-                }
-
-                switch (currentQuickFilter) {
-                    case 'top':      list = list.filter(function (t) { return t.isTopRated; }); break;
-                    case 'verified': list = list.filter(function (t) { return t.isVerified; }); break;
-                    case 'online':   list = list.filter(function (t) { return t.teachingMode === 'Online' || t.teachingMode === 'Both'; }); break;
-                    case 'offline':  list = list.filter(function (t) { return t.teachingMode === 'Offline' || t.teachingMode === 'Both'; }); break;
-                }
-
                 switch (sort) {
-                    case 'rating':     list.sort(function (a, b) { return b.rating - a.rating; }); break;
-                    case 'fee-low':    list.sort(function (a, b) { return a.monthlyFee - b.monthlyFee; }); break;
-                    case 'fee-high':   list.sort(function (a, b) { return b.monthlyFee - a.monthlyFee; }); break;
+                    case 'rating': list.sort(function (a, b) { return b.rating - a.rating; }); break;
+                    case 'fee-low': list.sort(function (a, b) { return a.monthlyFee - b.monthlyFee; }); break;
+                    case 'fee-high': list.sort(function (a, b) { return b.monthlyFee - a.monthlyFee; }); break;
                     case 'experience': list.sort(function (a, b) { return b.experienceYears - a.experienceYears; }); break;
                 }
 
                 renderList(list);
-            }
-
-            function setQuickFilter(el, filter) {
-                document.querySelectorAll('.quick-chip').forEach(function (c) { c.classList.remove('active'); });
-                el.classList.add('active');
-                currentQuickFilter = filter;
-                applySearch();
             }
 
             function viewProfile(id) {
@@ -1645,8 +3088,8 @@
 
                 var headerInfo = t
                     ? '<div class="form-intro"><p>Requesting <strong>' + escapeHtml(t.fullName) + '</strong> '
-                      + '(<span style="font-family:monospace;">' + escapeHtml(t.tutorId) + '</span>) — '
-                      + escapeHtml((t.subjects || []).join(', ')) + '. Your request goes to our admin team.</p></div>'
+                    + '(<span style="font-family:monospace;">' + escapeHtml(t.tutorId) + '</span>) — '
+                    + escapeHtml((t.subjects || []).join(', ')) + '. Your request goes to our admin team.</p></div>'
                     : '<div class="form-intro"><p>Already know your tutor? Select them below and submit your request. Our admin team will forward it.</p></div>';
 
                 var tutorOptions = allTutors.map(function (x) {
@@ -1658,18 +3101,27 @@
 
                 document.getElementById('requestTutorBody').innerHTML = ''
                     + '<form class="ft-form" onsubmit="submitTutorRequest(event)">'
-                    +   headerInfo
+                    + headerInfo
                     + '  <div class="form-section-label">Tutor Selection</div>'
                     + '  <div class="field"><label>Tutor <span class="req">*</span></label>'
                     + '    <select id="rtTutor" required>'
                     + '      <option value="">— Select a Tutor —</option>'
-                    +        tutorOptions
+                    + tutorOptions
                     + '    </select>'
                     + '  </div>'
                     + '  <div class="form-section-label">Student Information</div>'
                     + '  <div class="form-row">'
                     + '    <div class="field"><label>Student Name <span class="req">*</span></label><input type="text" id="rtName" required /></div>'
-                    + '    <div class="field"><label>Phone Number <span class="req">*</span></label><input type="tel" id="rtPhone" required /></div>'
+                    + '    <div class="field"><label>Phone Number <span class="req">*</span></label><input type="tel" id="rtPhone" required placeholder="01XXXXXXXXX" maxlength="11" /></div>'
+                    + '  </div>'
+                    + '  <div class="field whatsapp-icon-input">'
+                    + '    <label>WhatsApp Number <span class="req">*</span></label>'
+                    + '    <i class="fab fa-whatsapp wa-icon"></i>'
+                    + '    <input type="tel" id="rtWhatsApp" placeholder="01XXXXXXXXX" required maxlength="11" />'
+                    + '    <div class="whatsapp-same-toggle">'
+                    + '      <input type="checkbox" id="rtSameWhatsApp" checked onchange="toggleSameWhatsApp(\'rtPhone\',\'rtWhatsApp\',this)" />'
+                    + '      <label for="rtSameWhatsApp">Same as phone number</label>'
+                    + '    </div>'
                     + '  </div>'
                     + '  <div class="field"><label>Email</label><input type="email" id="rtEmail" /></div>'
                     + '  <div class="form-section-label">Requirement Details</div>'
@@ -1697,30 +3149,77 @@
                     + '  <div class="field"><label>Monthly Budget (৳)</label><input type="text" id="rtBudget" /></div>'
                     + '  <div class="form-section-label">Additional</div>'
                     + '  <div class="field"><label>Additional Requirements</label><textarea id="rtNotes"></textarea></div>'
-                    + '  <button type="submit" class="btn-submit"><i class="fas fa-paper-plane"></i> Send Tutor Request</button>'
+                    + '  <button type="submit" class="btn-submit" id="rtSubmitBtn"><i class="fas fa-paper-plane"></i> Send Tutor Request</button>'
                     + '</form>';
 
                 new bootstrap.Modal(document.getElementById('requestTutorModal')).show();
             }
 
-            function submitTutorRequest(e) {
+            async function submitTutorRequest(e) {
                 e.preventDefault();
+
+                var btn = document.getElementById('rtSubmitBtn');
+                var originalHtml = btn.innerHTML;
+
                 var tutorId = document.getElementById('rtTutor').value;
-                var tutor = allTutors.find(function (x) { return x.id == tutorId; });
+                var tutor = allTutors.find(function (x) { return String(x.id) === String(tutorId); });
+
+                var name = document.getElementById('rtName').value.trim();
+                var phone = document.getElementById('rtPhone').value.trim();
+                var wa = document.getElementById('rtWhatsApp').value.trim();
+
+                if (!name) { alert('Please enter student name.'); return; }
+                if (!isValidBdPhone(phone)) { alert('Please enter a valid phone number (e.g., 01712345678).'); return; }
+                if (!isValidBdPhone(wa)) { alert('Please enter a valid WhatsApp number.'); return; }
+
                 var reqId = generateRequestId();
 
-                var tutorLine = tutor
-                    ? 'Your request for <strong>' + escapeHtml(tutor.fullName) + '</strong> (' + escapeHtml(tutor.tutorId) + ') '
-                    : '';
+                var fd = new FormData();
+                fd.append('tutorId', tutor ? tutor.tutorId : '');
+                fd.append('tutorName', tutor ? tutor.fullName : '');
+                fd.append('studentName', name);
+                fd.append('phoneNumber', phone);
+                fd.append('whatsAppNumber', wa);
+                fd.append('email', document.getElementById('rtEmail').value.trim());
+                fd.append('studentClass', document.getElementById('rtClass').value);
+                fd.append('requiredSubject', document.getElementById('rtSubject').value.trim());
+                fd.append('preferredArea', document.getElementById('rtArea').value.trim());
+                fd.append('teachingMode', document.getElementById('rtMode').value);
+                fd.append('preferredDays', document.getElementById('rtDays').value.trim());
+                fd.append('preferredTime', document.getElementById('rtTime').value.trim());
+                fd.append('monthlyBudget', document.getElementById('rtBudget').value.trim());
+                fd.append('additionalNotes', document.getElementById('rtNotes').value.trim());
+                fd.append('requestType', 'SpecificTutor');
+                fd.append('requestId', reqId);
+                fd.append('__RequestVerificationToken', getToken());
 
-                document.getElementById('requestTutorBody').innerHTML = ''
-                    + '<div class="success-panel">'
-                    + '  <div class="success-icon"><i class="fas fa-check"></i></div>'
-                    + '  <h4>Request Submitted Successfully!</h4>'
-                    + '  <p>' + tutorLine + 'has been received. Our admin team will review your requirements and contact you soon.</p>'
-                    + '  <div class="success-req-id"><span class="req-label">Request ID</span><span class="req-value">' + reqId + '</span></div>'
-                    + '  <button class="btn-ok" onclick="closeModal(\'requestTutorModal\')">OK</button>'
-                    + '</div>';
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Submitting...';
+
+                try {
+                    var res = await fetch('/FindTutor/SubmitTutorRequest', { method: 'POST', body: fd });
+                    var data = await res.json();
+
+                    if (!data.success) {
+                        alert('❌ ' + (data.message || 'Failed to submit.'));
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                        return;
+                    }
+
+                    document.getElementById('requestTutorBody').innerHTML = ''
+                        + '<div class="success-panel">'
+                        + '  <div class="success-icon"><i class="fas fa-check"></i></div>'
+                        + '  <h4>Request Submitted Successfully!</h4>'
+                        + '  <p>Your request for <strong>' + escapeHtml(tutor ? tutor.fullName : '') + '</strong> has been received. Our admin team will contact you on WhatsApp shortly.</p>'
+                        + '  <div class="success-req-id"><span class="req-label">Request ID</span><span class="req-value">' + escapeHtml(data.requestId || reqId) + '</span></div>'
+                        + '  <button class="btn-ok" onclick="closeModal(\'requestTutorModal\')">OK</button>'
+                        + '</div>';
+                } catch (err) {
+                    alert('❌ Network error: ' + err.message);
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
             }
 
             function openNeedTutorModal() {
@@ -1730,7 +3229,16 @@
                     + '  <div class="form-section-label">Your Information</div>'
                     + '  <div class="form-row">'
                     + '    <div class="field"><label>Student Name <span class="req">*</span></label><input type="text" id="ntName" required /></div>'
-                    + '    <div class="field"><label>Phone Number <span class="req">*</span></label><input type="tel" id="ntPhone" required /></div>'
+                    + '    <div class="field"><label>Phone Number <span class="req">*</span></label><input type="tel" id="ntPhone" required placeholder="01XXXXXXXXX" maxlength="11" /></div>'
+                    + '  </div>'
+                    + '  <div class="field whatsapp-icon-input">'
+                    + '    <label>WhatsApp Number <span class="req">*</span></label>'
+                    + '    <i class="fab fa-whatsapp wa-icon"></i>'
+                    + '    <input type="tel" id="ntWhatsApp" placeholder="01XXXXXXXXX" required maxlength="11" />'
+                    + '    <div class="whatsapp-same-toggle">'
+                    + '      <input type="checkbox" id="ntSameWhatsApp" checked onchange="toggleSameWhatsApp(\'ntPhone\',\'ntWhatsApp\',this)" />'
+                    + '      <label for="ntSameWhatsApp">Same as phone number</label>'
+                    + '    </div>'
                     + '  </div>'
                     + '  <div class="form-section-label">Requirement</div>'
                     + '  <div class="form-row">'
@@ -1761,23 +3269,75 @@
                     + '    <div class="field"><label>Preferred Time</label><input type="text" id="ntTime" /></div>'
                     + '  </div>'
                     + '  <div class="field"><label>Additional Requirements</label><textarea id="ntNotes"></textarea></div>'
-                    + '  <button type="submit" class="btn-submit"><i class="fas fa-hands-helping"></i> Send Request to Admin</button>'
+                    + '  <button type="submit" class="btn-submit" id="ntSubmitBtn"><i class="fas fa-hands-helping"></i> Send Request to Admin</button>'
                     + '</form>';
 
                 new bootstrap.Modal(document.getElementById('needTutorModal')).show();
             }
 
-            function submitNeedTutor(e) {
+            async function submitNeedTutor(e) {
                 e.preventDefault();
+
+                var btn = document.getElementById('ntSubmitBtn');
+                var originalHtml = btn.innerHTML;
+
+                var name = document.getElementById('ntName').value.trim();
+                var phone = document.getElementById('ntPhone').value.trim();
+                var wa = document.getElementById('ntWhatsApp').value.trim();
+
+                if (!name) { alert('Please enter student name.'); return; }
+                if (!isValidBdPhone(phone)) { alert('Please enter a valid phone number.'); return; }
+                if (!isValidBdPhone(wa)) { alert('Please enter a valid WhatsApp number.'); return; }
+
                 var reqId = generateRequestId();
-                document.getElementById('needTutorBody').innerHTML = ''
-                    + '<div class="success-panel">'
-                    + '  <div class="success-icon"><i class="fas fa-check"></i></div>'
-                    + '  <h4>Request Sent to Admin!</h4>'
-                    + '  <p>Our admin team will review your requirements and find the best tutor for you. We\'ll contact you shortly.</p>'
-                    + '  <div class="success-req-id"><span class="req-label">Request ID</span><span class="req-value">' + reqId + '</span></div>'
-                    + '  <button class="btn-ok" onclick="closeModal(\'needTutorModal\')">OK</button>'
-                    + '</div>';
+
+                var fd = new FormData();
+                fd.append('tutorId', '');
+                fd.append('tutorName', '');
+                fd.append('studentName', name);
+                fd.append('phoneNumber', phone);
+                fd.append('whatsAppNumber', wa);
+                fd.append('email', '');
+                fd.append('studentClass', document.getElementById('ntClass').value);
+                fd.append('requiredSubject', document.getElementById('ntSubject').value.trim());
+                fd.append('preferredArea', document.getElementById('ntArea').value.trim());
+                fd.append('teachingMode', document.getElementById('ntMode').value);
+                fd.append('preferredDays', document.getElementById('ntDays').value.trim());
+                fd.append('preferredTime', document.getElementById('ntTime').value.trim());
+                fd.append('monthlyBudget', document.getElementById('ntBudget').value.trim());
+                fd.append('additionalNotes', document.getElementById('ntNotes').value.trim() +
+                    '\nPreferred Tutor Gender: ' + document.getElementById('ntGender').value);
+                fd.append('requestType', 'NeedTutor');
+                fd.append('requestId', reqId);
+                fd.append('__RequestVerificationToken', getToken());
+
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Sending...';
+
+                try {
+                    var res = await fetch('/FindTutor/SubmitTutorRequest', { method: 'POST', body: fd });
+                    var data = await res.json();
+
+                    if (!data.success) {
+                        alert('❌ ' + (data.message || 'Failed to send.'));
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                        return;
+                    }
+
+                    document.getElementById('needTutorBody').innerHTML = ''
+                        + '<div class="success-panel">'
+                        + '  <div class="success-icon"><i class="fas fa-check"></i></div>'
+                        + '  <h4>Request Sent to Admin!</h4>'
+                        + '  <p>Our admin team will review your requirements and find the best tutor for you. We\'ll contact you shortly.</p>'
+                        + '  <div class="success-req-id"><span class="req-label">Request ID</span><span class="req-value">' + escapeHtml(data.requestId || reqId) + '</span></div>'
+                        + '  <button class="btn-ok" onclick="closeModal(\'needTutorModal\')">OK</button>'
+                        + '</div>';
+                } catch (err) {
+                    alert('❌ Network error: ' + err.message);
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
             }
 
             function openAreaTuitionModal() {
@@ -1787,7 +3347,16 @@
                     + '  <div class="form-section-label">Your Information</div>'
                     + '  <div class="form-row">'
                     + '    <div class="field"><label>Your Name <span class="req">*</span></label><input type="text" id="atName" required /></div>'
-                    + '    <div class="field"><label>Phone Number <span class="req">*</span></label><input type="tel" id="atPhone" required /></div>'
+                    + '    <div class="field"><label>Phone Number <span class="req">*</span></label><input type="tel" id="atPhone" required placeholder="01XXXXXXXXX" maxlength="11" /></div>'
+                    + '  </div>'
+                    + '  <div class="field whatsapp-icon-input">'
+                    + '    <label>WhatsApp Number <span class="req">*</span></label>'
+                    + '    <i class="fab fa-whatsapp wa-icon"></i>'
+                    + '    <input type="tel" id="atWhatsApp" placeholder="01XXXXXXXXX" required maxlength="11" />'
+                    + '    <div class="whatsapp-same-toggle">'
+                    + '      <input type="checkbox" id="atSameWhatsApp" checked onchange="toggleSameWhatsApp(\'atPhone\',\'atWhatsApp\',this)" />'
+                    + '      <label for="atSameWhatsApp">Same as phone number</label>'
+                    + '    </div>'
                     + '  </div>'
                     + '  <div class="form-section-label">Tuition Requirement</div>'
                     + '  <div class="form-row">'
@@ -1819,24 +3388,80 @@
                     + '  </div>'
                     + '  <div class="field"><label>Monthly Budget (৳)</label><input type="text" id="atBudget" /></div>'
                     + '  <div class="field"><label>Additional Requirements</label><textarea id="atNotes"></textarea></div>'
-                    + '  <button type="submit" class="btn-submit"><i class="fas fa-headset"></i> Send to Admin</button>'
+                    + '  <button type="submit" class="btn-submit" id="atSubmitBtn"><i class="fas fa-headset"></i> Send to Admin</button>'
                     + '  <p style="font-size:12px; color:#8A9188; text-align:center; margin:12px 0 0;"><i class="fas fa-shield-alt me-1"></i> Our admin team will contact you within 24 hours.</p>'
                     + '</form>';
 
                 new bootstrap.Modal(document.getElementById('areaTuitionModal')).show();
             }
 
-            function submitAreaTuition(e) {
+            async function submitAreaTuition(e) {
                 e.preventDefault();
+
+                var btn = document.getElementById('atSubmitBtn');
+                var originalHtml = btn.innerHTML;
+
+                var name = document.getElementById('atName').value.trim();
+                var phone = document.getElementById('atPhone').value.trim();
+                var wa = document.getElementById('atWhatsApp').value.trim();
+
+                if (!name) { alert('Please enter your name.'); return; }
+                if (!isValidBdPhone(phone)) { alert('Please enter a valid phone number.'); return; }
+                if (!isValidBdPhone(wa)) { alert('Please enter a valid WhatsApp number.'); return; }
+
+                var area = document.getElementById('atArea').value.trim();
+                var city = document.getElementById('atCity').value.trim();
+                var fullArea = area + (city ? ', ' + city : '');
+
                 var reqId = generateRequestId();
-                document.getElementById('areaTuitionBody').innerHTML = ''
-                    + '<div class="success-panel">'
-                    + '  <div class="success-icon"><i class="fas fa-check"></i></div>'
-                    + '  <h4>Request Sent Successfully!</h4>'
-                    + '  <p>Our admin team will find tutors in your area and contact you soon.</p>'
-                    + '  <div class="success-req-id"><span class="req-label">Request ID</span><span class="req-value">' + reqId + '</span></div>'
-                    + '  <button class="btn-ok" onclick="closeModal(\'areaTuitionModal\')">OK</button>'
-                    + '</div>';
+
+                var fd = new FormData();
+                fd.append('tutorId', '');
+                fd.append('tutorName', '');
+                fd.append('studentName', name);
+                fd.append('phoneNumber', phone);
+                fd.append('whatsAppNumber', wa);
+                fd.append('email', '');
+                fd.append('studentClass', document.getElementById('atClass').value);
+                fd.append('requiredSubject', document.getElementById('atSubject').value.trim());
+                fd.append('preferredArea', fullArea);
+                fd.append('teachingMode', document.getElementById('atMode').value);
+                fd.append('preferredDays', document.getElementById('atDays').value.trim());
+                fd.append('preferredTime', document.getElementById('atTime').value.trim());
+                fd.append('monthlyBudget', document.getElementById('atBudget').value.trim());
+                fd.append('additionalNotes', document.getElementById('atNotes').value.trim() +
+                    '\nTutor Preference: ' + document.getElementById('atGender').value);
+                fd.append('requestType', 'AreaTuition');
+                fd.append('requestId', reqId);
+                fd.append('__RequestVerificationToken', getToken());
+
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Sending...';
+
+                try {
+                    var res = await fetch('/FindTutor/SubmitTutorRequest', { method: 'POST', body: fd });
+                    var data = await res.json();
+
+                    if (!data.success) {
+                        alert('❌ ' + (data.message || 'Failed to send.'));
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                        return;
+                    }
+
+                    document.getElementById('areaTuitionBody').innerHTML = ''
+                        + '<div class="success-panel">'
+                        + '  <div class="success-icon"><i class="fas fa-check"></i></div>'
+                        + '  <h4>Request Sent Successfully!</h4>'
+                        + '  <p>Our admin team will find tutors in your area and contact you soon.</p>'
+                        + '  <div class="success-req-id"><span class="req-label">Request ID</span><span class="req-value">' + escapeHtml(data.requestId || reqId) + '</span></div>'
+                        + '  <button class="btn-ok" onclick="closeModal(\'areaTuitionModal\')">OK</button>'
+                        + '</div>';
+                } catch (err) {
+                    alert('❌ Network error: ' + err.message);
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
             }
 
             function findByTutorId() {
@@ -1848,7 +3473,6 @@
                 else alert('No tutor found with Tutor ID: ' + id);
             }
 
-            // Expose to window for inline onclick
             window.viewProfile = viewProfile;
             window.openRequestTutorModal = openRequestTutorModal;
             window.openNeedTutorModal = openNeedTutorModal;
@@ -1858,20 +3482,11 @@
             window.submitNeedTutor = submitNeedTutor;
             window.submitAreaTuition = submitAreaTuition;
             window.applySearch = applySearch;
-            window.setQuickFilter = setQuickFilter;
             window.findByTutorId = findByTutorId;
             window.closeModal = closeModal;
 
             document.addEventListener('DOMContentLoaded', function () {
                 applySearch();
-
-                var mainSearch = document.getElementById('mainSearch');
-                if (mainSearch) {
-                    mainSearch.addEventListener('input', applySearch);
-                    mainSearch.addEventListener('keydown', function (e) {
-                        if (e.key === 'Enter') e.preventDefault();
-                    });
-                }
 
                 var tidInput = document.getElementById('tidInput');
                 if (tidInput) {

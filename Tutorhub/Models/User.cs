@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 
 namespace Tutorbub.Models
 {
@@ -15,9 +14,6 @@ namespace Tutorbub.Models
         public DateTime? LastLoginAt { get; set; }
         public string Role { get; set; } = "User";
         public bool IsActive { get; set; } = true;
-
-        // ===== ✅ পয়েন্ট সিস্টেম (নতুন) =====
-        public int TotalPoints { get; set; } = 0;
 
         // ===== প্রোফাইল ফিল্ড =====
         public string? MobileNumber { get; set; }
@@ -49,10 +45,5 @@ namespace Tutorbub.Models
         public string? PortfolioLink { get; set; }
         public string? LinkedInProfile { get; set; }
         public string? ProfileImageLink { get; set; }
-
-        // ===== রিলেশনশিপ =====
-        public List<UserSkill> Skills { get; set; } = new List<UserSkill>();
-        public List<CourseOrder> CourseOrders { get; set; } = new List<CourseOrder>();
-        public List<Certificate> Certificates { get; set; } = new List<Certificate>();
     }
 }

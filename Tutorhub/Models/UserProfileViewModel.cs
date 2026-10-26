@@ -1,9 +1,7 @@
 ﻿// 📁 Models/UserProfileViewModel.cs
 // লোকেশন: Tutorbub/Models/UserProfileViewModel.cs
-// ✅ TotalPoints প্রপার্টি যোগ করা হয়েছে পয়েন্ট সিস্টেমের জন্য।
 
 using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace Tutorbub.Models
@@ -29,10 +27,6 @@ namespace Tutorbub.Models
         public string UserName { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public string ProfileImage { get; set; } = string.Empty;
-
-        // ===== ✅ পয়েন্ট সিস্টেম (নতুন) =====
-        [Display(Name = "Total Points")]
-        public int TotalPoints { get; set; } = 0;
 
         // ===== অ্যাডিশনাল ইনফো =====
         [Display(Name = "Gender")]
@@ -99,15 +93,6 @@ namespace Tutorbub.Models
         [Display(Name = "Profile Image Link")]
         [Url(ErrorMessage = "Please enter a valid URL")]
         public string ProfileImageLink { get; set; } = string.Empty;
-
-        // ===== স্কিল সেট =====
-        public List<UserSkill> Skills { get; set; } = new List<UserSkill>();
-
-        // ===== কোর্স অর্ডার হিস্ট্রি =====
-        public List<CourseOrder> CourseOrders { get; set; } = new List<CourseOrder>();
-
-        // ===== সার্টিফিকেট =====
-        public List<Certificate> Certificates { get; set; } = new List<Certificate>();
 
         // ===== প্রোফাইল সম্পূর্ণ কিনা =====
         public bool IsProfileComplete()

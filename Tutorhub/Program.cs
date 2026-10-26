@@ -1,78 +1,71 @@
 // 📁 Program.cs
 // লোকেশন: Tutorbub/Program.cs
 
-using Tutorbub;
-using Microsoft.AspNetCore.Http.Features;
+using Microsoft.EntityFrameworkCore;
+using Tutorbub.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ============================================================
-// ===== ফাইল আপলোডের জন্য Kestrel limit বাড়ানো =====
+// ===== 1) MVC Services =====
 // ============================================================
-builder.WebHost.ConfigureKestrel(serverOptions =>
-{
-    // ৬০০ MB পর্যন্ত request body গ্রহণ করবে
-    serverOptions.Limits.MaxRequestBodySize = 600 * 1024 * 1024;
-});
-
-// ============================================================
-// ===== Form Options limit =====
-// ============================================================
-builder.Services.Configure<FormOptions>(options =>
-{
-    options.MultipartBodyLengthLimit = 600 * 1024 * 1024; // ৬০০ MB
-    options.ValueLengthLimit = int.MaxValue;
-    options.MultipartHeadersLengthLimit = int.MaxValue;
-});
-
-// ===== MVC সাপোর্ট =====
 builder.Services.AddControllersWithViews();
 
 // ============================================================
-// ===== সেশন সাপোর্ট =====
+// ===== 2) Session Configuration =====
 // ============================================================
-builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.IdleTimeout = TimeSpan.FromMinutes(60);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
 
-// IConfiguration ইনজেক্ট
-builder.Services.AddSingleton<IConfiguration>(builder.Configuration);
+// ============================================================
+// ===== 3) ✅ Entity Framework Core (PostgreSQL) =====
+// ============================================================
+// "Database" connection string আপনার appsettings.json থেকে আসবে
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
 
+// ============================================================
+// ===== 4) HttpContextAccessor (ViewBag/Sidebar এ দরকার) =====
+// ============================================================
+builder.Services.AddHttpContextAccessor();
+
+// ============================================================
+// ===== Build App =====
+// ============================================================
 var app = builder.Build();
 
 // ============================================================
-// ===== Configure the HTTP request pipeline =====
+// ===== 5) Configure HTTP Pipeline =====
 // ============================================================
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
+    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
-
-// ===== স্ট্যাটিক ফাইলস =====
 app.UseStaticFiles();
 
 app.UseRouting();
 
-// ===== সেশন মিডলওয়্যার =====
+// ✅ Session MUST be between UseRouting and UseAuthorization
 app.UseSession();
 
 app.UseAuthorization();
 
+// ============================================================
+// ===== 6) Default Route =====
+// ============================================================
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-// ===== Teacher Controller Route =====
-app.MapControllerRoute(
-    name: "teacher",
-    pattern: "Teacher/{action=TeacherDashboard}/{id?}",
-    defaults: new { controller = "Teacher" });
-
+// ============================================================
+// ===== Run App =====
+// ============================================================
 app.Run();

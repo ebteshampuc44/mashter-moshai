@@ -1,0 +1,658 @@
+﻿@model List<Tutorbub.Models.TuitionPost>
+
+@{
+    ViewData["Title"] = "Tuition Circular - Smart Tutor Hub";
+    Layout = "_Layout";
+    var isLoggedIn = Context.Session.GetString("UserName") != null;
+}
+
+<style>
+    /* ======================
+                   PAGE WRAPPER
+                   ====================== */
+    .tc-page {
+        background: #F3F1E7;
+        padding: 40px 20px 70px;
+        min-height: 80vh;
+    }
+
+    .tc-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    /* ======================
+                   HEADER
+                   ====================== */
+    .tc-header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+        .tc-header h1 {
+            font-family: 'Georgia', serif;
+            font-size: 38px;
+            font-weight: 700;
+            color: #1F3B2C;
+            margin: 0 0 10px;
+        }
+
+        .tc-header p {
+            color: #5B6B5E;
+            font-size: 15.5px;
+            max-width: 640px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+    /* ======================
+                   SEARCH BAR
+                   ====================== */
+    .tc-search {
+        max-width: 640px;
+        margin: 24px auto 0;
+        display: flex;
+        gap: 10px;
+        background: white;
+        padding: 6px 6px 6px 22px;
+        border-radius: 50px;
+        align-items: center;
+        box-shadow: 0 8px 30px rgba(31,59,44,0.08);
+        border: 2px solid transparent;
+        transition: border-color 0.3s;
+    }
+
+        .tc-search:focus-within {
+            border-color: #1F3B2C;
+        }
+
+        .tc-search i.fa-search {
+            color: #8A9188;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .tc-search input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 14.5px;
+            padding: 11px 0;
+            background: transparent;
+            color: #1F3B2C;
+            min-width: 0;
+        }
+
+        .tc-search button {
+            background: #1F3B2C;
+            color: white;
+            border: none;
+            padding: 11px 24px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 13.5px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            flex-shrink: 0;
+        }
+
+            .tc-search button:hover {
+                opacity: 0.88;
+            }
+
+    /* ======================
+                   STATS BAR
+                   ====================== */
+    .tc-stats {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 28px;
+    }
+
+    .tc-stat-pill {
+        background: white;
+        border-radius: 30px;
+        padding: 10px 22px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        color: #1F3B2C;
+        font-size: 14px;
+    }
+
+        .tc-stat-pill i {
+            color: #1F3B2C;
+        }
+
+    /* ======================
+                   GRID
+                   ====================== */
+    .tc-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 22px;
+        align-items: start;
+    }
+
+    /* ======================
+                   CARD
+                   ====================== */
+    .tc-card {
+        background: white;
+        border-radius: 18px;
+        padding: 26px 24px 22px;
+        border: 1px solid rgba(0,0,0,0.05);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        transition: all 0.3s;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+    }
+
+        .tc-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 34px rgba(31,59,44,0.12);
+            border-color: rgba(31,59,44,0.2);
+        }
+
+    /* ======================
+                   BADGE ROW (Code + Preference)
+                   ====================== */
+    .tc-badge-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    /* Code Badge */
+    .tc-code-badge {
+        background: #1F3B2C;
+        color: #F4C744;
+        padding: 5px 14px;
+        border-radius: 20px;
+        font-size: 11.5px;
+        font-weight: 800;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        max-width: 55%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-shrink: 0;
+    }
+
+    /* Tutor Preference Badge */
+    .tc-pref-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        background: #FCEACB;
+        color: #8a5a00;
+        max-width: 60%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+        .tc-pref-badge.male {
+            background: #cfe2ff;
+            color: #084298;
+        }
+
+        .tc-pref-badge.any {
+            background: #D9EDDF;
+            color: #1F3B2C;
+        }
+
+    /* Title */
+    .tc-card h3 {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1F3B2C;
+        margin: 0 0 18px;
+        line-height: 1.4;
+        font-family: 'Georgia', serif;
+    }
+
+    /* ======================
+                   INFO GRID (Aligned)
+                   ====================== */
+    .tc-info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px 20px;
+        margin-bottom: 16px;
+        align-items: start;
+        grid-auto-rows: min-content;
+    }
+
+    .tc-info-item {
+        font-size: 13.5px;
+        color: #5B6B5E;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        line-height: 1.55;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+
+        .tc-info-item i {
+            color: #1F3B2C;
+            font-size: 13px;
+            margin-top: 4px;
+            flex-shrink: 0;
+            width: 16px;
+            text-align: center;
+            line-height: 1;
+        }
+
+        .tc-info-item span {
+            flex: 1;
+            min-width: 0;
+            word-break: break-word;
+        }
+
+            .tc-info-item span strong {
+                color: #1F3B2C;
+                font-weight: 700;
+                margin-right: 4px;
+            }
+
+        .tc-info-item.full {
+            grid-column: 1 / -1;
+            align-self: start;
+        }
+
+    /* Salary Highlight */
+    .tc-salary {
+        background: #d4edda;
+        color: #155724 !important;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-weight: 700;
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+    }
+
+        .tc-salary i {
+            color: #155724;
+            flex-shrink: 0;
+        }
+
+    /* Special Note */
+    .tc-note {
+        background: #FFF9E6;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 18px;
+        font-size: 13px;
+        color: #5B6B5E;
+        line-height: 1.65;
+        border-left: 4px solid #F4C744;
+        white-space: pre-line;
+        word-break: break-word;
+    }
+
+        .tc-note strong {
+            color: #8a5a00;
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+    /* Apply Button */
+    .tc-btn-apply {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 13px;
+        background: #1F3B2C;
+        color: white;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 14px;
+        text-decoration: none;
+        transition: all 0.25s;
+        margin-top: auto;
+        border: none;
+        cursor: pointer;
+    }
+
+        .tc-btn-apply:hover {
+            background: #2d5a42;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(31,59,44,0.25);
+        }
+
+        /* Locked Apply Button (when not logged in) */
+        .tc-btn-apply.locked {
+            background: #8A9188;
+            cursor: pointer;
+        }
+
+            .tc-btn-apply.locked:hover {
+                background: #6B7568;
+                box-shadow: 0 6px 18px rgba(138,145,136,0.35);
+            }
+
+    /* ======================
+                   EMPTY STATE
+                   ====================== */
+    .tc-empty {
+        background: white;
+        border-radius: 18px;
+        padding: 70px 26px;
+        text-align: center;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.04);
+    }
+
+        .tc-empty i {
+            font-size: 60px;
+            color: #E7E4D9;
+            display: block;
+            margin-bottom: 18px;
+        }
+
+        .tc-empty h4 {
+            color: #1F3B2C;
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0 0 8px;
+        }
+
+        .tc-empty p {
+            color: #6B7568;
+            font-size: 14.5px;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+    /* ======================
+                   RESPONSIVE
+                   ====================== */
+    @@media (max-width: 640px) {
+        .tc-page {
+            padding: 26px 14px 60px;
+        }
+
+        .tc-header h1 {
+            font-size: 26px;
+        }
+
+        .tc-header p {
+            font-size: 14px;
+        }
+
+        .tc-search {
+            flex-direction: column;
+            padding: 12px;
+            border-radius: 16px;
+        }
+
+            .tc-search button {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .tc-search input {
+                text-align: center;
+                padding: 10px 0;
+            }
+
+        .tc-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .tc-info-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .tc-badge-row {
+            flex-wrap: wrap;
+        }
+
+        .tc-code-badge,
+        .tc-pref-badge {
+            max-width: 100%;
+        }
+    }
+</style>
+
+<div class="tc-page">
+    <div class="tc-container">
+
+        <!-- ======================
+             HEADER
+             ====================== -->
+        <div class="tc-header">
+            <h1>📢 Tuition Circular</h1>
+            <p>
+                নিচে সব Open Tuition Post দেওয়া আছে। আপনার পছন্দের টিউশনে <strong>Apply</strong>
+                করুন এবং Admin এর সাথে যোগাযোগ করুন।
+            </p>
+
+            <form method="get" asp-controller="Tuition" asp-action="Circular">
+                <div class="tc-search">
+                    <i class="fas fa-search"></i>
+                    <input type="text" name="search" value="@ViewBag.SearchQuery"
+                           placeholder="Search by area, subject, class or code..." />
+                    <button type="submit">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ======================
+             ALERTS
+             ====================== -->
+        @if (TempData["Success"] != null)
+        {
+            <div class="alert alert-success" style="border-radius:10px; max-width:700px; margin:0 auto 20px;">
+                <i class="fas fa-check-circle me-2"></i>@TempData["Success"]
+            </div>
+        }
+        @if (TempData["Error"] != null)
+        {
+            <div class="alert alert-danger" style="border-radius:10px; max-width:700px; margin:0 auto 20px;">
+                <i class="fas fa-exclamation-circle me-2"></i>@TempData["Error"]
+            </div>
+        }
+
+        <!-- ======================
+             STATS BAR
+             ====================== -->
+        <div class="tc-stats">
+            <div class="tc-stat-pill">
+                <i class="fas fa-bullhorn"></i>
+                @Model.Count Open Tuition@(Model.Count != 1 ? "s" : "")
+            </div>
+            <div class="tc-stat-pill">
+                <i class="fas fa-check-circle" style="color:#2ecc71;"></i>
+                Admin Verified
+            </div>
+            <div class="tc-stat-pill">
+                <i class="fas fa-shield-alt"></i>
+                Free to Apply
+            </div>
+        </div>
+
+        <!-- ======================
+             POSTS GRID
+             ====================== -->
+        @if (Model == null || Model.Count == 0)
+        {
+            <div class="tc-empty">
+                <i class="fas fa-clipboard-list"></i>
+                <h4>No Tuition Posts Available</h4>
+                <p>
+                    বর্তমানে কোনো Open Tuition নেই।<br />
+                    কিছুক্ষণ পর আবার চেক করুন।
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="tc-grid">
+                @foreach (var post in Model)
+                {
+                    var prefClass = "any";
+                    if (!string.IsNullOrEmpty(post.TutorGenderPreference))
+                    {
+                        if (post.TutorGenderPreference.Contains("Female", StringComparison.OrdinalIgnoreCase))
+                            prefClass = "";
+                        else if (post.TutorGenderPreference.Contains("Male", StringComparison.OrdinalIgnoreCase))
+                            prefClass = "male";
+                    }
+
+                    <div class="tc-card">
+
+                        <!-- Badge Row: Preference (left) + Code (right) -->
+                        <div class="tc-badge-row">
+                            @if (!string.IsNullOrEmpty(post.TutorGenderPreference))
+                            {
+                                <span class="tc-pref-badge @prefClass" title="@post.TutorGenderPreference">
+                                    <i class="fas fa-user-tie"></i> @post.TutorGenderPreference
+                                </span>
+                            }
+                            else
+                            {
+                                <span></span>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.TuitionCode))
+                            {
+                                <div class="tc-code-badge" title="@post.TuitionCode">@post.TuitionCode</div>
+                            }
+                        </div>
+
+                        <!-- Title -->
+                        <h3>@post.Title</h3>
+
+                        <!-- Info Grid -->
+                        <div class="tc-info-grid">
+
+                            @if (!string.IsNullOrEmpty(post.StudentGender))
+                            {
+                                <div class="tc-info-item">
+                                    <i class="fas fa-venus-mars"></i>
+                                    <span><strong>Students:</strong> @post.StudentGender</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.StudentClass))
+                            {
+                                <div class="tc-info-item">
+                                    <i class="fas fa-graduation-cap"></i>
+                                    <span><strong>Class:</strong> @post.StudentClass</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.Subjects))
+                            {
+                                <div class="tc-info-item">
+                                    <i class="fas fa-book"></i>
+                                    <span><strong>Subjects:</strong> @post.Subjects</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.DaysPerWeek))
+                            {
+                                <div class="tc-info-item">
+                                    <i class="fas fa-calendar-week"></i>
+                                    <span><strong>Days:</strong> @post.DaysPerWeek per week</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.PreferredTime))
+                            {
+                                <div class="tc-info-item">
+                                    <i class="fas fa-clock"></i>
+                                    <span><strong>Time:</strong> @post.PreferredTime</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.Area))
+                            {
+                                <div class="tc-info-item full">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                    <span><strong>Area:</strong> @post.Area</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.MediaFee))
+                            {
+                                <div class="tc-info-item full">
+                                    <i class="fas fa-percentage"></i>
+                                    <span><strong>Media Fee:</strong> @post.MediaFee</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(post.Salary))
+                            {
+                                <div class="tc-salary">
+                                    <i class="fas fa-money-bill-wave"></i>
+                                    <span><strong>Salary:</strong> ৳ @post.Salary /month</span>
+                                </div>
+                            }
+
+                        </div>
+
+                        <!-- Special Note -->
+                        @if (!string.IsNullOrEmpty(post.SpecialNote))
+                        {
+                            <div class="tc-note">
+                                <strong>বিঃদ্রঃ</strong>
+                                @post.SpecialNote
+                            </div>
+                        }
+
+                        <!-- ======================
+                             APPLY BUTTON (Login-aware)
+                             ====================== -->
+                        @if (isLoggedIn)
+                        {
+                            <a href="/Tuition/Apply/@post.Id" class="tc-btn-apply">
+                                <i class="fas fa-paper-plane"></i> Apply for This Tuition
+                            </a>
+                        }
+                        else
+                        {
+                            <a href="/Account/Login?returnUrl=/Tuition/Apply/@post.Id"
+                               class="tc-btn-apply locked"
+                               title="Login required to apply">
+                                <i class="fas fa-sign-in-alt"></i> Login to Apply
+                            </a>
+                        }
+
+                    </div>
+                }
+            </div>
+        }
+
+    </div>
+</div>

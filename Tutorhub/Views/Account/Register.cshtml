@@ -17,7 +17,7 @@
 
     .form-control-transparent {
         background-color: rgba(255, 255, 255, 0.15) !important;
-        border: 1px solid rgba(13, 110, 253, 0.4);
+        border: 1px solid rgba(25, 135, 84, 0.4);
         color: #1c1c1c;
         transition: all 0.2s ease;
     }
@@ -28,8 +28,8 @@
 
         .form-control-transparent:focus {
             background-color: rgba(255, 255, 255, 0.3) !important;
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+            border-color: #198754;
+            box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.25);
             color: #1c1c1c;
         }
 
@@ -61,9 +61,35 @@
     .was-validated .form-control-transparent:invalid ~ .invalid-feedback {
         display: block;
     }
+
+    /* Green theme overrides */
+    .card-header.bg-primary {
+        background-color: #198754 !important;
+    }
+
+    .btn-primary {
+        background-color: #198754 !important;
+        border-color: #198754 !important;
+    }
+
+        .btn-primary:hover,
+        .btn-primary:focus,
+        .btn-primary:active {
+            background-color: #157347 !important;
+            border-color: #146c43 !important;
+            box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.25) !important;
+        }
+
+    a {
+        color: #198754;
+    }
+
+        a:hover {
+            color: #146c43;
+        }
 </style>
 
-<div class="container-fluid py-5" style="background-image: url('https://i.ibb.co.com/LKVKbm5/hero-20-bg.avif'); background-size: cover; background-position: center; min-height: 80vh; display: flex; align-items: center;">
+<div class="container-fluid py-5" style="background-image: url('https://i.ibb.co.com/93m2hpJS/Chat-GPT-Image-Sep-26-2026-06-11-52-PM.png'); background-size: cover; background-position: center; min-height: 80vh; display: flex; align-items: center;">
     <div class="row justify-content-center w-100">
         <div class="col-md-4">
             <div class="card shadow card-transparent">

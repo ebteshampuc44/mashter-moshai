@@ -15,19 +15,21 @@ namespace Tutorbub.Controllers
 
         // ===== লগইন পেজ দেখানো =====
         [HttpGet]
-        public IActionResult Login()
+        public IActionResult Login(string? returnUrl = null)
         {
             if (HttpContext.Session.GetString("UserName") != null)
             {
                 return RedirectToAction("Index", "Home");
             }
+
+            ViewBag.ReturnUrl = returnUrl;
             return View();
         }
 
         // ===== লগইন করা =====
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult Login(string username, string password)
+        public IActionResult Login(string username, string password, string? returnUrl = null)
         {
             var user = _dbHelper.AuthenticateUser(username, password);
 
@@ -43,6 +45,12 @@ namespace Tutorbub.Controllers
                 HttpContext.Session.SetString("UserEmail", user.Email);
                 HttpContext.Session.SetString("UserRole", user.Role);
 
+                // ✅ returnUrl থাকলে সেখানে ফিরে যাও (local URL হলে)
+                if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+                {
+                    return Redirect(returnUrl);
+                }
+
                 // এডমিন হলে ড্যাশবোর্ডে পাঠানো
                 if (user.Role == "Admin")
                 {
@@ -53,6 +61,7 @@ namespace Tutorbub.Controllers
             }
 
             ViewBag.Error = "Invalid username or password";
+            ViewBag.ReturnUrl = returnUrl;
             return View();
         }
 

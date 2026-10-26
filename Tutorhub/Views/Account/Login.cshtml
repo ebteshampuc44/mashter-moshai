@@ -1,6 +1,7 @@
 ﻿@{
     ViewData["Title"] = "Login";
     Layout = "_Layout";
+    var returnUrl = ViewBag.ReturnUrl as string ?? "";
 }
 
 <style>
@@ -58,7 +59,7 @@
     }
 </style>
 
-<div class="container-fluid py-5" style="background-image: url('https://i.ibb.co.com/LKVKbm5/hero-20-bg.avif'); background-size: cover; background-position: center; min-height: 80vh; display: flex; align-items: center;">
+<div class="container-fluid py-5" style="background-image: url('https://i.ibb.co.com/93m2hpJS/Chat-GPT-Image-Sep-26-2026-06-11-52-PM.png'); background-size: cover; background-position: center; min-height: 80vh; display: flex; align-items: center;">
     <div class="row justify-content-center w-100">
         <div class="col-md-4">
             <div class="card shadow card-transparent">
@@ -74,9 +75,25 @@
                     {
                         <div class="alert alert-success">@TempData["Success"]</div>
                     }
+                    @if (TempData["Error"] != null)
+                    {
+                        <div class="alert alert-danger">@TempData["Error"]</div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(returnUrl))
+                    {
+                        <div class="alert alert-info" style="font-size: 13.5px;">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Please login to continue. You'll be redirected back after login.
+                        </div>
+                    }
 
                     <form method="post" asp-controller="Account" asp-action="Login" id="loginForm" novalidate>
                         @Html.AntiForgeryToken()
+
+                        <!-- ✅ returnUrl hidden field for post-login redirect -->
+                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+
                         <div class="mb-3">
                             <label class="form-label">Username</label>
                             <input name="username" id="loginUsername" type="text" class="form-control form-control-transparent" required />
@@ -100,7 +117,7 @@
 </div>
 
 <script>
-    (function() {
+    (function () {
         const form = document.getElementById('loginForm');
         const username = document.getElementById('loginUsername');
         const password = document.getElementById('loginPassword');
@@ -111,11 +128,11 @@
             return valid;
         }
 
-        [username, password].forEach(function(el) {
-            el.addEventListener('input', function() { markField(el); });
+        [username, password].forEach(function (el) {
+            el.addEventListener('input', function () { markField(el); });
         });
 
-        form.addEventListener('submit', function(e) {
+        form.addEventListener('submit', function (e) {
             const validUsername = markField(username);
             const validPassword = markField(password);
             if (!(validUsername && validPassword)) {
