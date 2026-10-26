@@ -283,6 +283,9 @@ namespace Tutorbub.Controllers
 
                     if (_dbHelper.UpdateUserProfile(user))
                     {
+                        // ✅ সেশন আপডেট করা হলো, যাতে পেজ রিলোড ছাড়াই ছবি দেখা যায়
+                        HttpContext.Session.SetString("ProfileImageLink", user.ProfileImageLink ?? "");
+
                         return Json(new { success = true, message = "Profile image uploaded successfully!", imageUrl = user.ProfileImageLink });
                     }
                 }

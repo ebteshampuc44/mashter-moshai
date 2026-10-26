@@ -90,7 +90,52 @@ namespace Tutorbub.Controllers
         }
 
         // ============================================================
-        // ===== SUBMIT TUTOR REQUEST (Student → Admin) =====
+        // ===== ✅ API: টিচারের প্রোফাইল ডাটা (পোস্ট থেকে ক্লিক করলে) =====
+        // ============================================================
+        [HttpGet]
+        public IActionResult GetTeacherProfile(int userId)
+        {
+            try
+            {
+                var user = _dbHelper.GetUserById(userId);
+                if (user == null)
+                    return Json(new { success = false, message = "User not found" });
+
+                return Json(new
+                {
+                    success = true,
+                    user = new
+                    {
+                        user.Id,
+                        user.FullName,
+                        user.Email,
+                        user.MobileNumber,
+                        user.Gender,
+                        user.AgeRange,
+                        user.EducationLevel,
+                        user.ExamDegreeTitle,
+                        user.InstitutionName,
+                        user.PassingYear,
+                        user.Country,
+                        user.StreetAddress,
+                        user.PermanentAddress,
+                        user.YearsOfExperience,
+                        user.CvLink,
+                        user.GithubProfile,
+                        user.PortfolioLink,
+                        user.LinkedInProfile,
+                        user.ProfileImageLink
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        // ============================================================
+        // ===== SUBMIT TUTOR REQUEST (Student → Admin/Teacher) =====
         // ============================================================
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -198,6 +243,54 @@ namespace Tutorbub.Controllers
                     catch (Exception ex)
                     {
                         Console.WriteLine("Admin notification error (non-fatal): " + ex.Message);
+                    }
+
+                    // ===== ✅ নতুন: Notify the Specific Teacher (Direct Request) =====
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(req.TutorId))
+                        {
+                            var allUsers = _dbHelper.GetAllUsers();
+                            User? targetTeacher = null;
+
+                            // TutorId (TCH-1001) থেকে রিয়েল ইউজার বের করা
+                            if (req.TutorId.StartsWith("TCH-"))
+                            {
+                                var parts = req.TutorId.Split('-');
+                                if (parts.Length == 2 && int.TryParse(parts[1], out int generatedId))
+                                {
+                                    // GetApprovedTutors() এর লজিক অনুযায়ী TutorId = "TCH-" + (1000 + requestId)
+                                    // তাই requestId = generatedId - 1000
+                                    int teacherRequestId = generatedId - 1000;
+
+                                    // এই requestId এর জন্য কোন ইউজারটি ছিলেন সেটি বের করি
+                                    var allRequests = _dbHelper.GetAllTeacherRequests();
+                                    var teacherReq = allRequests.FirstOrDefault(r => r.Id == teacherRequestId);
+
+                                    if (teacherReq != null)
+                                    {
+                                        targetTeacher = allUsers.FirstOrDefault(u => u.Id == teacherReq.UserId);
+                                    }
+                                }
+                            }
+
+                            // যদি টিউটর পাওয়া যায়, তবে তাকে নোটিফাই করি
+                            if (targetTeacher != null)
+                            {
+                                _dbHelper.CreateNotification(
+                                    targetTeacher.Id,
+                                    "📩 New Tutor Request!",
+                                    $"{req.StudentName} ({req.PhoneNumber}) wants to contact you for {req.RequiredSubject} tuition.",
+                                    "info",
+                                    "/Teacher/TeacherDashboard?section=direct-requests",
+                                    "fa-envelope-open-text"
+                                );
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Teacher notification error (non-fatal): " + ex.Message);
                     }
 
                     // ===== Success Response =====

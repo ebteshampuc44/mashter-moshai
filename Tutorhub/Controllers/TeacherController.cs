@@ -18,7 +18,9 @@ namespace Tutorbub.Controllers
             _dbHelper = new DatabaseHelper(configuration);
         }
 
+        // ============================================================
         // ===== টিচার ফর্ম দেখা =====
+        // ============================================================
         [HttpGet]
         public IActionResult RequestForm()
         {
@@ -58,7 +60,9 @@ namespace Tutorbub.Controllers
             return View(model);
         }
 
+        // ============================================================
         // ===== টিচার ফর্ম সাবমিট =====
+        // ============================================================
         [HttpPost]
         [ValidateAntiForgeryToken]
         public IActionResult RequestForm(TeacherRequest model)
@@ -103,9 +107,12 @@ namespace Tutorbub.Controllers
             return View(model);
         }
 
+        // ============================================================
         // ===== টিচার ড্যাশবোর্ড =====
+        // ============================================================
         public IActionResult TeacherDashboard()
         {
+            // ===== Auth check =====
             if (HttpContext.Session.GetString("UserName") == null)
             {
                 return RedirectToAction("Login", "Account");
@@ -146,6 +153,37 @@ namespace Tutorbub.Controllers
             var rejectedCount = applications.Count(a => a.Status == "Rejected");
 
             // ============================================================
+            // ===== ✅ Teacher Dashboard Stats (মোট পোস্ট, কমেন্ট, লাইক, রেসপন্স) =====
+            // ============================================================
+            TeacherDashboardStats stats;
+            List<TeacherPostStat> postStats;
+            try
+            {
+                stats = _dbHelper.GetTeacherDashboardStats(userId);
+                postStats = _dbHelper.GetTeacherPostStats(userId);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("TeacherDashboard - Stats error: " + ex.Message);
+                stats = new TeacherDashboardStats();
+                postStats = new List<TeacherPostStat>();
+            }
+
+            // ============================================================
+            // ===== ✅ নতুন: টিচারের কাছে আসা Direct Tutor Requests লোড =====
+            // ============================================================
+            List<TutorRequest> directRequests = new List<TutorRequest>();
+            try
+            {
+                // আপনার DatabaseHelper-এ থাকা GetTeacherDirectRequests মেথডটি কল করা হচ্ছে
+                directRequests = _dbHelper.GetTeacherDirectRequests(user.FullName);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("TeacherDashboard - GetTeacherDirectRequests error: " + ex.Message);
+            }
+
+            // ============================================================
             // ===== ✅ ViewModel তৈরি =====
             // ============================================================
             var model = new TeacherDashboardViewModel
@@ -165,7 +203,14 @@ namespace Tutorbub.Controllers
                 PendingApplications = pendingCount,
                 ShortlistedApplications = shortlistedCount,
                 SelectedApplications = selectedCount,
-                RejectedApplications = rejectedCount
+                RejectedApplications = rejectedCount,
+
+                // ✅ নতুন: Teacher Post Stats
+                Stats = stats,
+                PostStats = postStats,
+
+                // ✅ নতুন: Direct Tutor Requests
+                TutorRequests = directRequests
             };
 
             return View(model);

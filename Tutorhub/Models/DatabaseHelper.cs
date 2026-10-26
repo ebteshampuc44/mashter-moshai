@@ -354,6 +354,39 @@ namespace Tutorbub.Models
             }
         }
 
+        // ✅ নতুন: সব টিচারের লিস্ট আনা
+        public List<User> GetAllTeachers()
+        {
+            var list = new List<User>();
+            string query = @"
+                SELECT ""Id"", ""UserName"", ""Password"", ""FullName"", 
+                       ""Email"", ""CreatedAt"", ""LastLoginAt"", ""Role"", ""IsActive"",
+                       ""MobileNumber"", ""ProfileImage"", ""Gender"", ""AgeRange"", 
+                       ""PrimaryDeviceType"", ""YearsOfExperience"", ""AreaType"",
+                       ""Country"", ""StreetAddress"", ""PermanentAddress"",
+                       ""EducationLevel"", ""CurrentStudyStatus"", ""ExamDegreeTitle"",
+                       ""InstitutionName"", ""PassingYear"", ""IsCSEStudent"",
+                       ""CvLink"", ""GithubProfile"", ""PortfolioLink"", ""LinkedInProfile"", ""ProfileImageLink""
+                FROM ""Users"" WHERE ""Role"" = 'Teacher' ORDER BY ""Id"" DESC";
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                connection.Open();
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(MapUser(reader));
+                }
+                return list;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error GetAllTeachers: " + ex.Message);
+                return list;
+            }
+        }
+
         // ============================================================
         // ===== TEACHER REQUEST RELATED METHODS =====
         // ============================================================
@@ -540,13 +573,15 @@ namespace Tutorbub.Models
 
             string query = @"
                 SELECT 
-                    ""Id"", ""UserId"", ""FullName"", ""Email"", ""MobileNumber"",
-                    ""Education"", ""Institution"", ""SubjectExpertise"", ""Experience"",
-                    ""TeachingStyle"", ""AvailableDays"", ""PreferredTime"", ""HourlyRate"",
-                    ""CvLink"", ""WhyTeach"", ""Status"", ""RequestDate""
-                FROM ""TeacherRequests""
-                WHERE ""Status"" = 'Approved'
-                ORDER BY ""RequestDate"" DESC";
+                    tr.""Id"", tr.""UserId"", tr.""FullName"", tr.""Email"", tr.""MobileNumber"",
+                    tr.""Education"", tr.""Institution"", tr.""SubjectExpertise"", tr.""Experience"",
+                    tr.""TeachingStyle"", tr.""AvailableDays"", tr.""PreferredTime"", tr.""HourlyRate"",
+                    tr.""CvLink"", tr.""WhyTeach"", tr.""Status"", tr.""RequestDate"",
+                    u.""ProfileImageLink""
+                FROM ""TeacherRequests"" tr
+                LEFT JOIN ""Users"" u ON tr.""UserId"" = u.""Id""
+                WHERE tr.""Status"" = 'Approved'
+                ORDER BY tr.""RequestDate"" DESC";
 
             try
             {
@@ -599,6 +634,17 @@ namespace Tutorbub.Models
                         monthlyFee = Math.Round(hourlyRate * 30, 0);
                     }
 
+                    var photoUrl = "";
+                    try
+                    {
+                        var imgIdx = reader.GetOrdinal("ProfileImageLink");
+                        if (!reader.IsDBNull(imgIdx))
+                        {
+                            photoUrl = reader.GetString(imgIdx);
+                        }
+                    }
+                    catch { }
+
                     tutors.Add(new TutorProfile
                     {
                         Id = requestId,
@@ -606,7 +652,7 @@ namespace Tutorbub.Models
                         FullName = fullName,
                         Initials = initials,
                         Gender = "Any",
-                        PhotoUrl = "",
+                        PhotoUrl = photoUrl,
                         Subjects = subjects,
                         Classes = classes,
                         Qualification = reader["Education"]?.ToString() ?? "Not specified",
@@ -642,7 +688,7 @@ namespace Tutorbub.Models
         }
 
         // ============================================================
-        // ===== ✅ TUTOR REQUESTS (Student → Admin) =====
+        // ===== ✅ TUTOR REQUESTS (Student → Admin/Teacher) =====
         // ============================================================
 
         public bool CreateTutorRequest(TutorRequest req, out string? errorMessage)
@@ -729,6 +775,31 @@ namespace Tutorbub.Models
             catch (Exception ex)
             {
                 Console.WriteLine("Error GetAllTutorRequests: " + ex.Message);
+                return list;
+            }
+        }
+
+        // ✅ নতুন মেথড: টিচারের কাছে আসা Direct Requests
+        public List<TutorRequest> GetTeacherDirectRequests(string tutorName)
+        {
+            var list = new List<TutorRequest>();
+            string query = @"SELECT * FROM ""TutorRequests"" WHERE ""TutorName"" = @tutorName ORDER BY ""CreatedAt"" DESC";
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@tutorName", tutorName);
+                connection.Open();
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(MapTutorRequest(reader));
+                }
+                return list;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error GetTeacherDirectRequests: " + ex.Message);
                 return list;
             }
         }
@@ -890,6 +961,109 @@ namespace Tutorbub.Models
                 Console.WriteLine("Error GetUserTuitionApplications: " + ex.Message);
                 return list;
             }
+        }
+
+        // ============================================================
+        // ===== ✅ TEACHER DASHBOARD STATS (NEW) =====
+        // ============================================================
+
+        public TeacherDashboardStats GetTeacherDashboardStats(int userId)
+        {
+            var stats = new TeacherDashboardStats();
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                connection.Open();
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TeachWantedPosts"" WHERE ""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalPosts = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TeachWantedComments"" c
+                      INNER JOIN ""TeachWantedPosts"" p ON c.""PostId"" = p.""Id""
+                      WHERE p.""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalComments = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COALESCE(SUM(""LikeCount""), 0) FROM ""TeachWantedPosts"" 
+                      WHERE ""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalLikes = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TeachWantedComments"" c
+                      INNER JOIN ""TeachWantedPosts"" p ON c.""PostId"" = p.""Id""
+                      WHERE p.""UserId"" = @uid AND c.""ParentId"" IS NOT NULL", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalReplies = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TuitionApplications"" WHERE ""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalTuitionApplications = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                stats.TotalResponses = stats.TotalComments + stats.TotalLikes;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetTeacherDashboardStats error: " + ex.Message);
+            }
+
+            return stats;
+        }
+
+        public List<TeacherPostStat> GetTeacherPostStats(int userId)
+        {
+            var list = new List<TeacherPostStat>();
+
+            string query = @"
+                SELECT p.""Id"", p.""Content"", p.""ImageUrl"", p.""LikeCount"", p.""CreatedAt"",
+                       (SELECT COUNT(*) FROM ""TeachWantedComments"" WHERE ""PostId"" = p.""Id"") AS ""CommentCount""
+                FROM ""TeachWantedPosts"" p
+                WHERE p.""UserId"" = @uid
+                ORDER BY p.""CreatedAt"" DESC";
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@uid", userId);
+                connection.Open();
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(new TeacherPostStat
+                    {
+                        PostId = reader.GetInt32(reader.GetOrdinal("Id")),
+                        Content = reader["Content"]?.ToString() ?? "",
+                        ImageUrl = reader["ImageUrl"]?.ToString(),
+                        LikeCount = Convert.ToInt32(reader["LikeCount"]),
+                        CommentCount = Convert.ToInt32(reader["CommentCount"]),
+                        CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetTeacherPostStats error: " + ex.Message);
+            }
+
+            return list;
         }
 
         // ============================================================
@@ -1268,7 +1442,6 @@ namespace Tutorbub.Models
                         UpdatedAt = reader["UpdatedAt"] as DateTime?
                     };
 
-                    // ===== Tutor Section Image (optional column) =====
                     try
                     {
                         var tutorImgIdx = reader.GetOrdinal("TutorSectionImageUrl");
@@ -1282,7 +1455,6 @@ namespace Tutorbub.Models
                         settings.TutorSectionImageUrl = "https://i.ibb.co.com/Hfpwnx46/111.png";
                     }
 
-                    // ===== ✅ NEW: Branding / Logo columns (optional, safe fallback) =====
                     try
                     {
                         var idx = reader.GetOrdinal("SiteName");
@@ -1351,7 +1523,6 @@ namespace Tutorbub.Models
                     existing = Convert.ToInt64(checkCmd.ExecuteScalar());
                 }
 
-                // ===== Column existence helper =====
                 bool HasColumn(string colName)
                 {
                     try
@@ -1373,7 +1544,6 @@ namespace Tutorbub.Models
                 bool hasLogoSize = HasColumn("LogoSizePx");
                 bool hasLogoShape = HasColumn("LogoShape");
 
-                // ===== Build SET clause dynamically =====
                 var setClauses = new List<string>
                 {
                     @"""HeroImageUrls"" = @heroImageUrls",
@@ -1387,7 +1557,6 @@ namespace Tutorbub.Models
                     @"""FooterBgColor"" = @footerBgColor"
                 };
 
-                // ===== Build INSERT columns / values dynamically =====
                 var insertCols = new List<string>
                 {
                     @"""HeroImageUrls""", @"""SliderEnabled""", @"""SliderIntervalSeconds""",
@@ -1443,7 +1612,6 @@ namespace Tutorbub.Models
                     insertVals.Add("@logoShape");
                 }
 
-                // ===== Final query =====
                 string query;
                 if (existing > 0)
                 {
@@ -1457,7 +1625,6 @@ namespace Tutorbub.Models
 
                 using var command = new NpgsqlCommand(query, connection);
 
-                // ===== Base parameters =====
                 command.Parameters.AddWithValue("@heroImageUrls", settings.HeroImageUrls ?? "");
                 command.Parameters.AddWithValue("@sliderEnabled", settings.SliderEnabled);
                 command.Parameters.AddWithValue("@sliderInterval", settings.SliderIntervalSeconds);
@@ -1468,7 +1635,6 @@ namespace Tutorbub.Models
                 command.Parameters.AddWithValue("@navbarBgColor", settings.NavbarBgColor ?? "#F3F1E7");
                 command.Parameters.AddWithValue("@footerBgColor", settings.FooterBgColor ?? "#F3F1E7");
 
-                // ===== Optional parameters =====
                 if (hasTutorColumn)
                 {
                     command.Parameters.AddWithValue("@tutorSectionImageUrl",
@@ -1517,7 +1683,6 @@ namespace Tutorbub.Models
                     command.Parameters.AddWithValue("@logoShape", shape);
                 }
 
-                // ===== ID / timestamps =====
                 if (existing > 0)
                 {
                     command.Parameters.AddWithValue("@id", settings.Id);
@@ -1655,7 +1820,6 @@ namespace Tutorbub.Models
                 return list;
             }
 
-            // Load Comments for each post
             foreach (var post in list)
             {
                 post.Comments = GetTeachWantedComments(post.Id, currentUserId);
@@ -1707,7 +1871,6 @@ namespace Tutorbub.Models
                     });
                 }
 
-                // ✅ Facebook-style: শুধু ২ লেভেল — মেইন কমেন্ট + তার নিচের সব রিপ্লাই (flat)
                 var byId = allComments.ToDictionary(c => c.Id);
                 var topLevel = allComments
                     .Where(c => c.ParentId == null || !byId.ContainsKey(c.ParentId.Value))
@@ -1718,7 +1881,6 @@ namespace Tutorbub.Models
                 {
                     if (topSet.Contains(c.Id)) continue;
 
-                    // রিপ্লাইয়ের রিপ্লাই হলেও সবচেয়ে উপরের মেইন কমেন্ট খুঁজে বের করা
                     var root = c;
                     int guard = 0;
                     while (root.ParentId.HasValue && byId.TryGetValue(root.ParentId.Value, out var p) && guard++ < 50)
@@ -1736,7 +1898,6 @@ namespace Tutorbub.Models
             }
         }
 
-        // ✅ কমেন্টে Like / Unlike
         public (bool isLiked, int count) ToggleTeachCommentLike(int commentId, int userId)
         {
             try
@@ -1823,7 +1984,6 @@ namespace Tutorbub.Models
             }
         }
 
-        // ✅ পোস্ট এডিট (শুধু পোস্টের মালিক)
         public bool UpdateTeachWantedPost(int postId, int requesterId, string content,
             bool imageChanged, string? newImageUrl,
             out string? oldImageUrl, out string? finalImageUrl, out string? errorMessage)
@@ -1876,7 +2036,6 @@ namespace Tutorbub.Models
             }
         }
 
-        // ✅ পোস্ট ডিলিট (মালিক অথবা Admin) — কমেন্ট, কমেন্ট-লাইক ও পোস্ট-লাইকসহ
         public bool DeleteTeachWantedPost(int postId, int requesterId, bool isAdmin,
             out string? imageUrl, out string? errorMessage)
         {
@@ -1972,7 +2131,6 @@ namespace Tutorbub.Models
                 using var connection = new NpgsqlConnection(_connectionString);
                 connection.Open();
 
-                // Check if already liked
                 string checkQuery = @"SELECT COUNT(*) FROM ""TeachWantedLikes"" WHERE ""PostId"" = @postId AND ""UserId"" = @userId";
                 using var checkCmd = new NpgsqlCommand(checkQuery, connection);
                 checkCmd.Parameters.AddWithValue("@postId", postId);
@@ -1984,7 +2142,6 @@ namespace Tutorbub.Models
 
                 if (exists > 0)
                 {
-                    // Unlike
                     string delQuery = @"DELETE FROM ""TeachWantedLikes"" WHERE ""PostId"" = @postId AND ""UserId"" = @userId";
                     using var delCmd = new NpgsqlCommand(delQuery, connection);
                     delCmd.Parameters.AddWithValue("@postId", postId);
@@ -1995,7 +2152,6 @@ namespace Tutorbub.Models
                 }
                 else
                 {
-                    // Like
                     string insQuery = @"INSERT INTO ""TeachWantedLikes"" (""PostId"", ""UserId"", ""CreatedAt"") VALUES (@postId, @userId, @createdAt)";
                     using var insCmd = new NpgsqlCommand(insQuery, connection);
                     insCmd.Parameters.AddWithValue("@postId", postId);
@@ -2005,7 +2161,6 @@ namespace Tutorbub.Models
                     isLiked = true;
                 }
 
-                // Update count in Posts table
                 string updQuery = @"UPDATE ""TeachWantedPosts"" SET ""LikeCount"" = ""LikeCount"" + @change WHERE ""Id"" = @postId RETURNING ""LikeCount""";
                 using var updCmd = new NpgsqlCommand(updQuery, connection);
                 updCmd.Parameters.AddWithValue("@change", change);

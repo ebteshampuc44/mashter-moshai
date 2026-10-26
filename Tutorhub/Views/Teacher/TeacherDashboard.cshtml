@@ -3,731 +3,819 @@
 @{
     ViewData["Title"] = "Teacher Dashboard";
     Layout = "_Layout";
+
+    // Active section logic from URL
+    var activeSection = Context.Request.Query["section"].ToString();
+    if (string.IsNullOrEmpty(activeSection)) { activeSection = "overview"; }
 }
 
 <style>
     /* ============================================================
-       PAGE WRAPPER
-       ============================================================ */
-    .td-page {
-        background: linear-gradient(180deg, #F3F1E7 0%, #FAF9F4 100%);
-        min-height: calc(100vh - 80px);
-        padding: 30px 20px 60px;
-    }
-    .td-container {
-        max-width: 1200px;
+               PAGE LAYOUT & WRAPPER
+               ============================================================ */
+    .td-wrapper {
+        display: flex;
+        gap: 25px;
+        max-width: 1300px;
         margin: 0 auto;
-    }
-
-    /* ============================================================
-       PROFILE HERO CARD
-       ============================================================ */
-    .profile-hero {
-        background: white;
-        border-radius: 24px;
-        overflow: hidden;
-        box-shadow: 0 10px 40px rgba(31,59,44,0.08);
-        border: 1px solid rgba(0,0,0,0.04);
-        margin-bottom: 30px;
-        position: relative;
-        transition: transform 0.3s, box-shadow 0.3s;
-    }
-    .profile-hero:hover {
-        box-shadow: 0 15px 50px rgba(31,59,44,0.12);
-    }
-
-    /* Gradient header strip */
-    .profile-hero-header {
-        height: 100px;
-        background: linear-gradient(135deg, #1F3B2C 0%, #2d5a42 50%, #3a7355 100%);
-        position: relative;
-        overflow: hidden;
-    }
-    .profile-hero-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -10%;
-        width: 300px;
-        height: 300px;
-        background: radial-gradient(circle, rgba(244,199,68,0.25) 0%, transparent 70%);
-        border-radius: 50%;
-    }
-    .profile-hero-header::after {
-        content: '';
-        position: absolute;
-        bottom: -80%;
-        left: -5%;
-        width: 250px;
-        height: 250px;
-        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-        border-radius: 50%;
-    }
-
-    /* ✅ Avatar overlapping the header — CENTERED */
-    .profile-avatar-wrap {
-        position: relative;
-        margin-top: -70px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 2;
-        width: 100%;
-    }
-    .profile-avatar-lg {
-        display: block;
-        width: 140px;
-        height: 140px;
-        border-radius: 50%;
-        object-fit: cover;
-        border: 6px solid white;
-        box-shadow: 0 8px 30px rgba(31,59,44,0.2);
-        background: white;
-        transition: transform 0.3s;
-        margin: 0;
-    }
-    .profile-avatar-lg:hover {
-        transform: scale(1.05);
-    }
-
-    .profile-info {
-        text-align: center;
-        padding: 20px 30px 30px;
-    }
-    .profile-greeting {
-        font-family: 'Georgia', serif;
-        color: #1F3B2C;
-        font-size: 26px;
-        font-weight: 700;
-        margin: 0 0 12px;
-        letter-spacing: -0.3px;
-    }
-    .profile-contact {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px 24px;
-        color: #6B7568;
-        font-size: 14.5px;
-        margin-bottom: 18px;
-    }
-    .profile-contact span {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        padding: 6px 14px;
-        background: #FAF9F4;
-        border-radius: 20px;
-        transition: all 0.2s;
-    }
-    .profile-contact span:hover {
+        padding: 30px 20px 70px;
+        min-height: calc(100vh - 80px);
         background: #F3F1E7;
     }
-    .profile-contact span i {
-        color: #1F3B2C;
-        font-size: 13px;
-    }
-
-    .profile-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 20px;
-        background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
-        color: white;
-        border-radius: 30px;
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.3px;
-        box-shadow: 0 4px 14px rgba(46,204,113,0.35);
-    }
-    .profile-badge i {
-        font-size: 12px;
-    }
 
     /* ============================================================
-       SECTION TITLE
-       ============================================================ */
-    .section-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-    }
-    .section-title {
-        font-family: 'Georgia', serif;
-        color: #1F3B2C;
-        font-weight: 700;
-        font-size: 22px;
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    .section-title i {
-        color: #1F3B2C;
-        font-size: 20px;
-    }
-    .section-count-badge {
-        background: linear-gradient(135deg, #1F3B2C, #2d5a42);
-        color: #F4C744;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-size: 13px;
-        font-weight: 800;
-        font-family: sans-serif;
-        box-shadow: 0 3px 10px rgba(31,59,44,0.2);
-    }
-
-    /* ============================================================
-       STATUS SUMMARY CARDS
-       ============================================================ */
-    .status-summary {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 14px;
-        margin-bottom: 24px;
-    }
-    .status-summary-card {
+               SIDEBAR
+               ============================================================ */
+    .td-sidebar {
+        width: 280px;
+        flex-shrink: 0;
         background: white;
-        border-radius: 14px;
-        padding: 16px 18px;
-        box-shadow: 0 3px 14px rgba(0,0,0,0.05);
+        border-radius: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
         border: 1px solid rgba(0,0,0,0.04);
-        transition: all 0.25s;
-        cursor: default;
-        position: relative;
+        height: fit-content;
+        position: sticky;
+        top: 100px;
         overflow: hidden;
     }
-    .status-summary-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-    }
-    .status-summary-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 4px;
-        height: 100%;
-        border-radius: 4px 0 0 4px;
-    }
-    .status-summary-card.pending::before { background: #f39c12; }
-    .status-summary-card.shortlisted::before { background: #3498db; }
-    .status-summary-card.selected::before { background: #2ecc71; }
-    .status-summary-card.rejected::before { background: #e74c3c; }
 
-    .status-summary-inner {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .status-summary-icon {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        flex-shrink: 0;
-    }
-    .status-summary-card.pending .status-summary-icon {
-        background: #fff3cd;
-        color: #856404;
-    }
-    .status-summary-card.shortlisted .status-summary-icon {
-        background: #cfe2ff;
-        color: #084298;
-    }
-    .status-summary-card.selected .status-summary-icon {
-        background: #d4edda;
-        color: #155724;
-    }
-    .status-summary-card.rejected .status-summary-icon {
-        background: #f8d7da;
-        color: #721c24;
+    .td-profile-header {
+        padding: 30px 20px 20px;
+        text-align: center;
+        border-bottom: 1px solid #F3F1E7;
+        background: linear-gradient(180deg, #F8F9F5 0%, #FFFFFF 100%);
     }
 
-    .status-summary-text {
-        flex: 1;
-        min-width: 0;
+    .td-avatar {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #1F3B2C;
+        margin: 0 auto 12px;
+        display: block;
+        box-shadow: 0 4px 12px rgba(31,59,44,0.15);
+        background: #E7E4D9;
     }
-    .status-summary-label {
-        font-size: 11.5px;
+
+    .td-name {
+        font-family: 'Georgia', serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1F3B2C;
+        margin: 0 0 4px;
+    }
+
+    .td-role {
+        font-size: 12px;
+        color: #2ecc71;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: #8A9188;
-        margin-bottom: 2px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: #d4edda;
+        padding: 4px 12px;
+        border-radius: 20px;
     }
-    .status-summary-count {
+
+    .td-menu {
+        list-style: none;
+        padding: 10px 0;
+        margin: 0;
+    }
+
+        .td-menu li a {
+            display: flex;
+            align-items: center;
+            padding: 14px 24px;
+            color: #5B6B5E;
+            text-decoration: none;
+            font-size: 14.5px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border-left: 4px solid transparent;
+        }
+
+            .td-menu li a:hover {
+                background: #F8F9F5;
+                color: #1F3B2C;
+            }
+
+            .td-menu li a.active {
+                background: #F3F1E7;
+                color: #1F3B2C;
+                border-left-color: #1F3B2C;
+            }
+
+            .td-menu li a i {
+                width: 24px;
+                font-size: 16px;
+                margin-right: 12px;
+                color: #8A9188;
+                text-align: center;
+            }
+
+            .td-menu li a.active i {
+                color: #1F3B2C;
+            }
+
+    .td-badge {
+        margin-left: auto;
+        background: #E7E4D9;
+        color: #1F3B2C;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 800;
+    }
+
+    /* ============================================================
+               MAIN CONTENT
+               ============================================================ */
+    .td-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .td-section {
+        display: none;
+        animation: fadeIn 0.3s ease;
+    }
+
+        .td-section.active {
+            display: block;
+        }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* ============================================================
+               OVERVIEW CARDS
+               ============================================================ */
+    .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .overview-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+        border: 1px solid rgba(0,0,0,0.04);
+        transition: transform 0.2s;
+    }
+
+        .overview-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(31,59,44,0.08);
+        }
+
+    .oc-icon {
+        width: 54px;
+        height: 54px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        flex-shrink: 0;
+    }
+
+        .oc-icon.posts {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .oc-icon.comments {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .oc-icon.responses {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .oc-icon.apps {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .oc-icon.likes {
+            background: #f8d7da;
+            color: #e74c3c;
+        }
+
+        .oc-icon.replies {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+    .oc-info h4 {
+        margin: 0;
         font-size: 24px;
         font-weight: 800;
         color: #1F3B2C;
         line-height: 1.1;
-        font-family: 'Georgia', serif;
+    }
+
+    .oc-info p {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: #8A9188;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
     }
 
     /* ============================================================
-       APPLICATION CARD
-       ============================================================ */
-    .app-card {
+               POSTS LIST
+               ============================================================ */
+    .post-stat-card {
         background: white;
-        border-radius: 18px;
-        padding: 22px 24px;
+        border-radius: 16px;
+        padding: 20px;
         margin-bottom: 16px;
-        box-shadow: 0 4px 18px rgba(0,0,0,0.05);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.03);
         border: 1px solid rgba(0,0,0,0.04);
-        position: relative;
-        overflow: hidden;
-        transition: all 0.3s ease;
+        transition: all 0.2s;
     }
-    .app-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 5px;
-        height: 100%;
-        background: #f39c12;
-        transition: width 0.3s;
-    }
-    .app-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 12px 32px rgba(31,59,44,0.12);
-    }
-    .app-card:hover::before {
-        width: 8px;
-    }
-    .app-card.status-Shortlisted::before { background: #3498db; }
-    .app-card.status-Selected::before { background: #2ecc71; }
-    .app-card.status-Rejected::before { background: #e74c3c; opacity: 0.7; }
-    .app-card.status-Rejected { opacity: 0.92; }
 
-    .app-card-header {
+        .post-stat-card:hover {
+            box-shadow: 0 6px 20px rgba(31,59,44,0.06);
+        }
+
+    .ps-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 16px;
-    }
-    .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 16px;
-        border-radius: 30px;
-        font-size: 11.5px;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-        white-space: nowrap;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    }
-    .status-pill.Pending {
-        background: linear-gradient(135deg, #fff3cd 0%, #ffe9a8 100%);
-        color: #856404;
-    }
-    .status-pill.Shortlisted {
-        background: linear-gradient(135deg, #cfe2ff 0%, #a8c8ff 100%);
-        color: #084298;
-    }
-    .status-pill.Selected {
-        background: linear-gradient(135deg, #d4edda 0%, #a8e6bc 100%);
-        color: #155724;
-    }
-    .status-pill.Rejected {
-        background: linear-gradient(135deg, #f8d7da 0%, #f5b7bb 100%);
-        color: #721c24;
+        margin-bottom: 12px;
     }
 
-    .app-date {
-        color: #8A9188;
+    .ps-date {
         font-size: 12.5px;
-        display: inline-flex;
+        color: #8A9188;
+        display: flex;
         align-items: center;
         gap: 6px;
-        background: #FAF9F4;
-        padding: 6px 14px;
-        border-radius: 20px;
     }
-    .app-date i {
-        font-size: 11px;
+
+    .ps-content {
+        font-size: 14.5px;
+        color: #4B5648;
+        line-height: 1.6;
+        margin-bottom: 16px;
     }
+
+    .ps-image {
+        max-width: 100%;
+        max-height: 200px;
+        border-radius: 10px;
+        object-fit: cover;
+        margin-bottom: 16px;
+        border: 1px solid #E7E4D9;
+    }
+
+    .ps-footer {
+        display: flex;
+        gap: 16px;
+        padding-top: 14px;
+        border-top: 1px dashed #E7E4D9;
+    }
+
+    .ps-stat {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #6B7568;
+    }
+
+        .ps-stat i {
+            font-size: 14px;
+        }
+
+        .ps-stat.likes i {
+            color: #e74c3c;
+        }
+
+        .ps-stat.comments i {
+            color: #3498db;
+        }
+
+    /* ============================================================
+               STATUS SUMMARY CARDS
+               ============================================================ */
+    .status-summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+
+    .status-summary-card {
+        background: white;
+        border-radius: 12px;
+        padding: 14px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+        border-left: 4px solid #ccc;
+    }
+
+        .status-summary-card.pending {
+            border-left-color: #f39c12;
+        }
+
+        .status-summary-card.shortlisted {
+            border-left-color: #3498db;
+        }
+
+        .status-summary-card.selected {
+            border-left-color: #2ecc71;
+        }
+
+        .status-summary-card.rejected {
+            border-left-color: #e74c3c;
+        }
+
+    .ss-label {
+        font-size: 11.5px;
+        color: #8A9188;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+
+    .ss-value {
+        font-size: 22px;
+        font-weight: 800;
+        color: #1F3B2C;
+    }
+
+    /* ============================================================
+               APPLICATION CARD
+               ============================================================ */
+    .app-card {
+        background: white;
+        border-radius: 14px;
+        padding: 20px;
+        margin-bottom: 12px;
+        border-left: 5px solid #f39c12;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    }
+
+        .app-card.status-Shortlisted {
+            border-left-color: #3498db;
+        }
+
+        .app-card.status-Selected {
+            border-left-color: #2ecc71;
+        }
+
+        .app-card.status-Rejected {
+            border-left-color: #e74c3c;
+            opacity: 0.8;
+        }
 
     .app-title {
-        font-family: 'Georgia', serif;
-        font-size: 19px;
-        font-weight: 700;
-        color: #1F3B2C;
-        margin: 0 0 12px;
-        line-height: 1.35;
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-    .app-title i {
-        color: #D98E1F;
         font-size: 17px;
-    }
-    .ref-code {
-        display: inline-flex;
-        align-items: center;
-        background: linear-gradient(135deg, #1F3B2C, #2d5a42);
-        color: #F4C744;
-        padding: 3px 12px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 800;
-        font-family: 'Courier New', monospace;
-        letter-spacing: 0.5px;
-        box-shadow: 0 2px 8px rgba(31,59,44,0.2);
-    }
-
-    .app-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 16px;
-    }
-    .app-meta-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 14px;
-        background: #FAF9F4;
-        border-radius: 20px;
-        font-size: 12.5px;
-        color: #4B5648;
-        border: 1px solid #EFECE0;
-        transition: all 0.2s;
-    }
-    .app-meta-chip:hover {
-        background: #F3F1E7;
-        border-color: #E5E1D3;
-    }
-    .app-meta-chip i {
-        color: #1F3B2C;
-        font-size: 12px;
-    }
-    .app-meta-chip.salary {
-        background: #d4edda;
-        color: #155724;
-        border-color: #a8e6bc;
         font-weight: 700;
-    }
-    .app-meta-chip.salary i {
-        color: #155724;
-    }
-
-    .app-info-box {
-        background: linear-gradient(135deg, #FAF9F4 0%, #F3F1E7 100%);
-        border-radius: 12px;
-        padding: 14px 18px;
-        border-left: 4px solid #F4C744;
-        font-size: 13px;
-        color: #4B5648;
-        line-height: 1.7;
-    }
-    .app-info-box strong {
         color: #1F3B2C;
-        font-weight: 700;
-        margin-right: 8px;
-    }
-    .app-info-box .info-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin-right: 18px;
-        margin-top: 4px;
-    }
-    .app-info-box .info-item i {
-        color: #1F3B2C;
-        font-size: 12px;
-    }
-
-    .app-admin-note {
-        margin-top: 14px;
-        padding: 14px 18px;
-        background: linear-gradient(135deg, #FFF9E6 0%, #FFFAF0 100%);
-        border-radius: 12px;
-        border-left: 4px solid #F4C744;
-        font-size: 13px;
-        color: #5B6B5E;
-        line-height: 1.7;
-        display: flex;
-        gap: 10px;
-    }
-    .app-admin-note i {
-        color: #D98E1F;
-        font-size: 15px;
-        margin-top: 2px;
-        flex-shrink: 0;
-    }
-    .app-admin-note strong {
-        color: #8a5a00;
-        display: block;
-        margin-bottom: 3px;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        margin-bottom: 10px;
     }
 
     /* ============================================================
-       EMPTY STATE
-       ============================================================ */
-    .empty-apps {
+               EMPTY STATE
+               ============================================================ */
+    .td-empty {
         text-align: center;
-        padding: 60px 24px;
+        padding: 60px 20px;
         background: white;
-        border-radius: 20px;
-        box-shadow: 0 6px 24px rgba(0,0,0,0.05);
-        border: 2px dashed #E5E1D3;
-    }
-    .empty-apps .empty-icon {
-        width: 90px;
-        height: 90px;
-        margin: 0 auto 20px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #FAF9F4, #F3F1E7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .empty-apps .empty-icon i {
-        font-size: 40px;
-        color: #D5CFB8;
-    }
-    .empty-apps h5 {
-        color: #1F3B2C;
-        font-size: 20px;
-        font-weight: 700;
-        margin: 0 0 8px;
-        font-family: 'Georgia', serif;
-    }
-    .empty-apps p {
-        color: #8A9188;
-        font-size: 14px;
-        margin: 0 0 24px;
-        line-height: 1.6;
-        max-width: 400px;
-        margin-left: auto;
-        margin-right: auto;
-    }
-    .btn-browse {
-        display: inline-flex;
-        align-items: center;
-        gap: 9px;
-        padding: 13px 28px;
-        background: linear-gradient(135deg, #1F3B2C, #2d5a42);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-weight: 700;
-        font-size: 14px;
-        text-decoration: none;
-        transition: all 0.25s;
-        box-shadow: 0 6px 20px rgba(31,59,44,0.25);
-    }
-    .btn-browse:hover {
-        color: white;
-        transform: translateY(-2px);
-        box-shadow: 0 10px 28px rgba(31,59,44,0.35);
+        border-radius: 16px;
+        border: 2px dashed #E7E4D9;
     }
 
-    /* ============================================================
-       FOOTER NOTE
-       ============================================================ */
-    .footer-note {
-        text-align: center;
-        margin-top: 30px;
-        padding: 16px;
-        color: #8A9188;
-        font-size: 13px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-    }
-    .footer-note i {
-        color: #1F3B2C;
-    }
+        .td-empty i {
+            font-size: 48px;
+            color: #D5CFB8;
+            margin-bottom: 16px;
+        }
+
+        .td-empty h5 {
+            color: #1F3B2C;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .td-empty p {
+            color: #8A9188;
+            font-size: 14px;
+            margin: 0;
+        }
 
     /* ============================================================
-       RESPONSIVE
-       ============================================================ */
+               RESPONSIVE
+               ============================================================ */
     @@media (max-width: 992px) {
-        .status-summary {
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
-    @@media (max-width: 576px) {
-        .td-page {
-            padding: 20px 12px 50px;
-        }
-        .profile-hero-header {
-            height: 80px;
-        }
-        .profile-avatar-wrap {
-            margin-top: -55px;
-        }
-        .profile-avatar-lg {
-            width: 110px;
-            height: 110px;
-            border-width: 5px;
-        }
-        .profile-greeting {
-            font-size: 20px;
-        }
-        .profile-contact {
+        .td-wrapper {
             flex-direction: column;
-            gap: 8px;
+            padding: 20px 15px;
         }
-        .status-summary {
+
+        .td-sidebar {
+            width: 100%;
+            position: static;
+        }
+
+        .overview-grid {
             grid-template-columns: 1fr;
         }
-        .section-title {
+
+        .status-summary {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .td-profile-header {
+            display: flex;
+            align-items: center;
+            text-align: left;
+            gap: 15px;
+            padding: 20px;
+        }
+
+        .td-avatar {
+            width: 70px;
+            height: 70px;
+            margin: 0;
+        }
+
+        .td-name {
             font-size: 18px;
         }
-        .app-card {
-            padding: 18px 16px;
-        }
-        .app-card-header {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        .app-title {
-            font-size: 16px;
-        }
-        .app-info-box .info-item {
+
+        .td-menu {
             display: flex;
-            margin-right: 0;
+            overflow-x: auto;
+            padding: 10px;
+        }
+
+            .td-menu li a {
+                padding: 10px 16px;
+                white-space: nowrap;
+                border-left: none;
+                border-bottom: 3px solid transparent;
+            }
+
+                .td-menu li a.active {
+                    border-left-color: transparent;
+                    border-bottom-color: #1F3B2C;
+                }
+
+        .td-badge {
+            display: none;
+        }
+    }
+
+    @@media (max-width: 576px) {
+        .status-summary {
+            grid-template-columns: 1fr;
         }
     }
 </style>
 
-<div class="td-page">
-    <div class="td-container">
+<div class="td-wrapper">
 
-        @if (TempData["Error"] != null)
-        {
-            <div class="alert alert-danger" style="border-radius: 12px;">
-                <i class="fas fa-exclamation-circle me-2"></i>@TempData["Error"]
+    <!-- ============================================================ -->
+    <!-- ===== SIDEBAR ===== -->
+    <!-- ============================================================ -->
+    <div class="td-sidebar">
+        <div class="td-profile-header">
+            <!-- ✅ Safe Avatar fallback logic -->
+            <img src="@(string.IsNullOrEmpty(Model.ProfileImageLink) || Model.ProfileImageLink.Contains("imgbb.com") ? "https://ui-avatars.com/api/?name=" + Uri.EscapeDataString(Model.FullName ?? "Teacher") + "&background=1F3B2C&color=fff&size=120" : Model.ProfileImageLink)"
+                 alt="Profile" class="td-avatar" />
+            <div>
+                <h3 class="td-name">@Model.FullName</h3>
+                <span class="td-role"><i class="fas fa-check-circle"></i> Active Teacher</span>
             </div>
-        }
+        </div>
+
+        <ul class="td-menu">
+            <li>
+                <a href="?section=overview" class="@(activeSection == "overview" ? "active" : "")">
+                    <i class="fas fa-chart-pie"></i> Overview
+                </a>
+            </li>
+            <li>
+                <a href="?section=direct-requests" class="@(activeSection == "direct-requests" ? "active" : "")">
+                    <i class="fas fa-envelope-open-text"></i> Direct Requests
+                    <span class="td-badge">@(Model.TutorRequests?.Count ?? 0)</span>
+                </a>
+            </li>
+            <li>
+                <a href="?section=posts" class="@(activeSection == "posts" ? "active" : "")">
+                    <i class="fas fa-file-alt"></i> My Posts
+                    <span class="td-badge">@(Model.Stats?.TotalPosts ?? 0)</span>
+                </a>
+            </li>
+            <li>
+                <a href="?section=comments" class="@(activeSection == "comments" ? "active" : "")">
+                    <i class="fas fa-comments"></i> Comments
+                    <span class="td-badge">@(Model.Stats?.TotalComments ?? 0)</span>
+                </a>
+            </li>
+            <li>
+                <a href="?section=responses" class="@(activeSection == "responses" ? "active" : "")">
+                    <i class="fas fa-reply-all"></i> Responses
+                    <span class="td-badge">@(Model.Stats?.TotalResponses ?? 0)</span>
+                </a>
+            </li>
+            <li>
+                <a href="?section=applications" class="@(activeSection == "applications" ? "active" : "")">
+                    <i class="fas fa-graduation-cap"></i> Applications
+                    <span class="td-badge">@Model.TotalApplications</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===== MAIN CONTENT ===== -->
+    <!-- ============================================================ -->
+    <div class="td-main">
 
         <!-- ============================================================ -->
-        <!-- ===== PROFILE HERO CARD ===== -->
+        <!-- 1. OVERVIEW SECTION -->
         <!-- ============================================================ -->
-        <div class="profile-hero">
-            <div class="profile-hero-header"></div>
+        <div class="td-section @(activeSection == "overview" ? "active" : "")" id="sec-overview">
+            <h2 style="color:#1F3B2C; font-weight:800; margin-bottom:20px;">Welcome back, @Model.FullName! 👋</h2>
 
-            <div class="profile-avatar-wrap">
-                <img src="@(string.IsNullOrEmpty(Model.ProfileImageLink) ? "https://i.ibb.co/fd9s88Y/IMG-6916-1.png" : Model.ProfileImageLink)"
-                     alt="Profile"
-                     class="profile-avatar-lg" />
-            </div>
-
-            <div class="profile-info">
-                <h2 class="profile-greeting">Welcome, @Model.FullName!</h2>
-
-                <div class="profile-contact">
-                    <span><i class="fas fa-envelope"></i>@Model.Email</span>
-                    <span><i class="fas fa-phone"></i>@Model.MobileNumber</span>
+            <div class="overview-grid">
+                <div class="overview-card">
+                    <div class="oc-icon posts"><i class="fas fa-file-alt"></i></div>
+                    <div class="oc-info">
+                        <h4>@(Model.Stats?.TotalPosts ?? 0)</h4>
+                        <p>Total Posts</p>
+                    </div>
                 </div>
+                <div class="overview-card">
+                    <div class="oc-icon comments"><i class="fas fa-comments"></i></div>
+                    <div class="oc-info">
+                        <h4>@(Model.Stats?.TotalComments ?? 0)</h4>
+                        <p>Total Comments</p>
+                    </div>
+                </div>
+                <div class="overview-card">
+                    <div class="oc-icon responses"><i class="fas fa-reply-all"></i></div>
+                    <div class="oc-info">
+                        <h4>@(Model.Stats?.TotalResponses ?? 0)</h4>
+                        <p>Total Responses</p>
+                    </div>
+                </div>
+                <div class="overview-card">
+                    <div class="oc-icon apps"><i class="fas fa-graduation-cap"></i></div>
+                    <div class="oc-info">
+                        <h4>@Model.TotalApplications</h4>
+                        <p>Tuition Applications</p>
+                    </div>
+                </div>
+            </div>
 
-                <div class="profile-badge">
-                    <i class="fas fa-check-circle"></i> Active Teacher
+            <div style="background:white; padding:24px; border-radius:16px; border:1px solid rgba(0,0,0,0.04); box-shadow:0 4px 16px rgba(0,0,0,0.02);">
+                <h5 style="margin:0 0 10px; color:#1F3B2C; font-weight:700;">Quick Summary</h5>
+                <p style="color:#6B7568; font-size:14.5px; line-height:1.7; margin:0;">
+                    আপনার তৈরি করা পোস্টগুলোতে এখন পর্যন্ত <strong>@(Model.Stats?.TotalLikes ?? 0)</strong> টি লাইক এবং <strong>@(Model.Stats?.TotalComments ?? 0)</strong> টি কমেন্ট পড়েছে।
+                    এছাড়া আপনার কাছে আসা <strong>@(Model.TutorRequests?.Count ?? 0)</strong> টি Direct Request অপেক্ষা করছে। বাম দিকের মেনু থেকে বিস্তারিত দেখতে পারেন।
+                </p>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- 2. DIRECT REQUESTS SECTION -->
+        <!-- ============================================================ -->
+        <div class="td-section @(activeSection == "direct-requests" ? "active" : "")" id="sec-direct-requests">
+            <h3 style="color:#1F3B2C; font-weight:800; margin-bottom:20px;">Direct Requests (@(Model.TutorRequests?.Count ?? 0))</h3>
+
+            @if (Model.TutorRequests == null || Model.TutorRequests.Count == 0)
+            {
+                <div class="td-empty">
+                    <i class="fas fa-inbox"></i>
+                    <h5>No Direct Requests Yet</h5>
+                    <p>আপনার কাছে সরাসরি কোনো রিকোয়েস্ট আসেনি। Find Tutor পেইজে আপনার প্রোফাইল থেকে রিকোয়েস্ট আসলে এখানে দেখা যাবে।</p>
+                </div>
+            }
+            else
+            {
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    @foreach (var req in Model.TutorRequests)
+                    {
+                        <div style="background: white; border-radius: 14px; padding: 20px; border-left: 5px solid #F4C744; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+
+                            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span style="background: #1F3B2C; color: white; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;">
+                                        @req.RequestTypeLabel
+                                    </span>
+                                    <span style="font-size: 12px; color: #8A9188;"><i class="far fa-clock"></i> @req.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")</span>
+                                </div>
+                                <span class="badge @(req.Status == "Pending" ? "bg-warning" : req.Status == "Contacted" ? "bg-info" : "bg-success") text-dark" style="font-size:11px; padding: 5px 12px;">
+                                    @req.Status
+                                </span>
+                            </div>
+
+                            <h5 style="color: #1F3B2C; font-weight: 700; margin-bottom: 8px;">
+                                <i class="fas fa-user-graduate me-1"></i> @req.StudentName
+                            </h5>
+
+                            <div style="font-size: 13.5px; color: #6B7568; display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px;">
+                                @if (!string.IsNullOrEmpty(req.StudentClass))
+                                {
+                                    <span><i class="fas fa-book" style="color:#1F3B2C;"></i> @req.StudentClass</span>
+                                }
+                                @if (!string.IsNullOrEmpty(req.RequiredSubject))
+                                {
+                                    <span><i class="fas fa-book-open" style="color:#1F3B2C;"></i> @req.RequiredSubject</span>
+                                }
+                                @if (!string.IsNullOrEmpty(req.PreferredArea))
+                                {
+                                    <span><i class="fas fa-map-marker-alt" style="color:#1F3B2C;"></i> @req.PreferredArea</span>
+                                }
+                                @if (!string.IsNullOrEmpty(req.MonthlyBudget))
+                                {
+                                    <span><i class="fas fa-money-bill-wave" style="color:#1F3B2C;"></i> ৳@req.MonthlyBudget</span>
+                                }
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(req.AdditionalNotes))
+                            {
+                                <div style="background: #FAF9F4; padding: 12px; border-radius: 8px; font-size: 13px; color: #4B5648; margin-bottom: 16px; border: 1px dashed #E5E1D3;">
+                                    <strong>Notes:</strong> @req.AdditionalNotes
+                                </div>
+                            }
+
+                            <!-- Contact Actions -->
+                            <div class="d-flex gap-2 flex-wrap mt-3 pt-3 border-top">
+                                @if (!string.IsNullOrEmpty(req.WhatsAppLink))
+                                {
+                                    <a href="@req.WhatsAppLink" target="_blank" class="btn btn-sm text-white" style="background:#25D366; border-radius:8px; font-weight:600;">
+                                        <i class="fab fa-whatsapp"></i> WhatsApp
+                                    </a>
+                                }
+                                @if (!string.IsNullOrEmpty(req.PhoneNumber))
+                                {
+                                    <a href="tel:@req.PhoneNumber" class="btn btn-sm text-white" style="background:#3498db; border-radius:8px; font-weight:600;">
+                                        <i class="fas fa-phone"></i> Call
+                                    </a>
+                                }
+                                @if (!string.IsNullOrEmpty(req.Email))
+                                {
+                                    <a href="mailto:@req.Email" class="btn btn-sm text-white" style="background:#6c757d; border-radius:8px; font-weight:600;">
+                                        <i class="fas fa-envelope"></i> Email
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- 3. MY POSTS SECTION -->
+        <!-- ============================================================ -->
+        <div class="td-section @(activeSection == "posts" ? "active" : "")" id="sec-posts">
+            <h3 style="color:#1F3B2C; font-weight:800; margin-bottom:20px;">My Posts (@(Model.Stats?.TotalPosts ?? 0))</h3>
+
+            @if (Model.PostStats == null || Model.PostStats.Count == 0)
+            {
+                <div class="td-empty">
+                    <i class="fas fa-file-alt"></i>
+                    <h5>No Posts Yet</h5>
+                    <p>আপনি এখনো কোনো পোস্ট করেননি। Find Tutor পেজে গিয়ে পোস্ট তৈরি করুন।</p>
+                    <a href="/FindTutor/Index" style="display:inline-block; margin-top:15px; padding:10px 24px; background:#1F3B2C; color:white; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">
+                        Go to Find Tutor
+                    </a>
+                </div>
+            }
+            else
+            {
+                foreach (var post in Model.PostStats)
+                {
+                    <div class="post-stat-card">
+                        <div class="ps-header">
+                            <span class="ps-date"><i class="far fa-clock"></i> @post.TimeAgo</span>
+                        </div>
+                        <div class="ps-content">
+                            @if (!string.IsNullOrEmpty(post.ImageUrl))
+                            {
+                                <img src="@post.ImageUrl" class="ps-image" alt="Post Image" />
+                            }
+                            <p style="margin:0; white-space:pre-line;">@post.Content</p>
+                        </div>
+                        <div class="ps-footer">
+                            <span class="ps-stat likes"><i class="fas fa-heart"></i> @post.LikeCount Likes</span>
+                            <span class="ps-stat comments"><i class="fas fa-comment"></i> @post.CommentCount Comments</span>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- 4. COMMENTS SECTION -->
+        <!-- ============================================================ -->
+        <div class="td-section @(activeSection == "comments" ? "active" : "")" id="sec-comments">
+            <h3 style="color:#1F3B2C; font-weight:800; margin-bottom:20px;">Comments (@(Model.Stats?.TotalComments ?? 0))</h3>
+
+            <div class="td-empty" style="border-style:solid; border-color:#F3F1E7;">
+                <i class="fas fa-comments" style="color:#3498db;"></i>
+                <h5>Total @(Model.Stats?.TotalComments ?? 0) Comments Received</h5>
+                <p>আপনার পোস্টগুলোতে মোট @(Model.Stats?.TotalComments ?? 0) টি কমেন্ট এসেছে।</p>
+                <div style="margin-top:16px;">
+                    <a href="/FindTutor/Index" style="display:inline-block; padding:10px 24px; background:#E7E4D9; color:#1F3B2C; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">
+                        <i class="fas fa-external-link-alt"></i> View Comments on Find Tutor Page
+                    </a>
                 </div>
             </div>
         </div>
 
         <!-- ============================================================ -->
-        <!-- ===== MY TUITION APPLICATIONS ===== -->
+        <!-- 5. RESPONSES SECTION -->
         <!-- ============================================================ -->
-        <div class="mb-4">
-            <div class="section-header">
-                <h4 class="section-title">
-                    <i class="fas fa-clipboard-list"></i> My Tuition Applications
-                </h4>
-                @if (Model.TotalApplications > 0)
-                {
-                    <span class="section-count-badge">@Model.TotalApplications</span>
-                }
+        <div class="td-section @(activeSection == "responses" ? "active" : "")" id="sec-responses">
+            <h3 style="color:#1F3B2C; font-weight:800; margin-bottom:20px;">Responses (@(Model.Stats?.TotalResponses ?? 0))</h3>
+
+            <div class="overview-grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="overview-card">
+                    <div class="oc-icon likes"><i class="fas fa-heart"></i></div>
+                    <div class="oc-info">
+                        <h4>@(Model.Stats?.TotalLikes ?? 0)</h4>
+                        <p>Total Likes</p>
+                    </div>
+                </div>
+                <div class="overview-card">
+                    <div class="oc-icon replies"><i class="fas fa-reply"></i></div>
+                    <div class="oc-info">
+                        <h4>@(Model.Stats?.TotalReplies ?? 0)</h4>
+                        <p>Total Replies</p>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- 6. APPLICATIONS SECTION -->
+        <!-- ============================================================ -->
+        <div class="td-section @(activeSection == "applications" ? "active" : "")" id="sec-applications">
+            <h3 style="color:#1F3B2C; font-weight:800; margin-bottom:20px;">Tuition Applications (@Model.TotalApplications)</h3>
 
             @if (Model.TotalApplications > 0)
             {
-                <!-- Status Summary Cards -->
                 <div class="status-summary">
                     <div class="status-summary-card pending">
-                        <div class="status-summary-inner">
-                            <div class="status-summary-icon">
-                                <i class="fas fa-hourglass-half"></i>
-                            </div>
-                            <div class="status-summary-text">
-                                <div class="status-summary-label">Pending</div>
-                                <div class="status-summary-count">@Model.PendingApplications</div>
-                            </div>
-                        </div>
+                        <div class="ss-label">Pending</div>
+                        <div class="ss-value">@Model.PendingApplications</div>
                     </div>
-
                     <div class="status-summary-card shortlisted">
-                        <div class="status-summary-inner">
-                            <div class="status-summary-icon">
-                                <i class="fas fa-check"></i>
-                            </div>
-                            <div class="status-summary-text">
-                                <div class="status-summary-label">Shortlisted</div>
-                                <div class="status-summary-count">@Model.ShortlistedApplications</div>
-                            </div>
-                        </div>
+                        <div class="ss-label">Shortlisted</div>
+                        <div class="ss-value">@Model.ShortlistedApplications</div>
                     </div>
-
                     <div class="status-summary-card selected">
-                        <div class="status-summary-inner">
-                            <div class="status-summary-icon">
-                                <i class="fas fa-trophy"></i>
-                            </div>
-                            <div class="status-summary-text">
-                                <div class="status-summary-label">Selected</div>
-                                <div class="status-summary-count">@Model.SelectedApplications</div>
-                            </div>
-                        </div>
+                        <div class="ss-label">Selected</div>
+                        <div class="ss-value">@Model.SelectedApplications</div>
                     </div>
-
                     <div class="status-summary-card rejected">
-                        <div class="status-summary-inner">
-                            <div class="status-summary-icon">
-                                <i class="fas fa-times"></i>
-                            </div>
-                            <div class="status-summary-text">
-                                <div class="status-summary-label">Rejected</div>
-                                <div class="status-summary-count">@Model.RejectedApplications</div>
-                            </div>
-                        </div>
+                        <div class="ss-label">Rejected</div>
+                        <div class="ss-value">@Model.RejectedApplications</div>
                     </div>
                 </div>
             }
 
             @if (Model.TuitionApplications == null || Model.TuitionApplications.Count == 0)
             {
-                <div class="empty-apps">
-                    <div class="empty-icon">
-                        <i class="fas fa-inbox"></i>
-                    </div>
-                    <h5>No Tuition Applications Yet</h5>
-                    <p>
-                        You haven't applied for any tuition yet.
-                        Browse the Tuition Circular and apply for your preferred tuition.
-                    </p>
-                    <a href="/Tuition/Circular" class="btn-browse">
-                        <i class="fas fa-search"></i> Browse Tuition Circular
+                <div class="td-empty">
+                    <i class="fas fa-inbox"></i>
+                    <h5>No Applications Yet</h5>
+                    <p>আপনি এখনো কোনো টিউশনে অ্যাপ্লাই করেননি।</p>
+                    <a href="/Tuition/Circular" style="display:inline-block; margin-top:15px; padding:10px 24px; background:#1F3B2C; color:white; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">
+                        Browse Tuition Circular
                     </a>
                 </div>
             }
@@ -735,115 +823,38 @@
             {
                 foreach (var app in Model.TuitionApplications)
                 {
-                    <div class="app-card status-@app.Status" id="app-@app.Id">
-
-                        <!-- ===== Header: Status + Date ===== -->
-                        <div class="app-card-header">
-                            <span class="status-pill @app.Status">
-                                @switch (app.Status)
-                                {
-                                    case "Pending":
-                                        <i class="fas fa-hourglass-half"></i>
-                                        break;
-                                    case "Shortlisted":
-                                        <i class="fas fa-check"></i>
-                                        break;
-                                    case "Selected":
-                                        <i class="fas fa-trophy"></i>
-                                        break;
-                                    case "Rejected":
-                                        <i class="fas fa-times"></i>
-                                        break;
-                                }
+                    <div class="app-card status-@app.Status">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge bg-@(app.Status == "Pending" ? "warning" : app.Status == "Selected" ? "success" : app.Status == "Shortlisted" ? "primary" : "danger") text-white" style="font-size:11px; padding:5px 12px;">
                                 @app.Status
                             </span>
-                            <span class="app-date">
-                                <i class="fas fa-calendar"></i>
-                                Applied: @app.AppliedAt.ToString("dd MMM yyyy, hh:mm tt")
+                            <span style="font-size:12px; color:#8A9188;">
+                                <i class="far fa-calendar"></i> @app.AppliedAt.ToString("dd MMM yyyy")
                             </span>
                         </div>
-
-                        <!-- ===== Tuition Post Reference ===== -->
+                        <h5 class="app-title">
+                            @(app.TuitionPost != null ? app.TuitionPost.Title : "Tuition Application #" + app.Id)
+                        </h5>
                         @if (app.TuitionPost != null)
                         {
-                            <h5 class="app-title">
-                                <i class="fas fa-clipboard-list"></i>
-                                @app.TuitionPost.Title
-                                @if (!string.IsNullOrEmpty(app.TuitionPost.TuitionCode))
-                                {
-                                    <span class="ref-code">@app.TuitionPost.TuitionCode</span>
-                                }
-                            </h5>
-
-                            <div class="app-meta">
+                            <div style="font-size:13px; color:#6B7568; display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
                                 @if (!string.IsNullOrEmpty(app.TuitionPost.Area))
                                 {
-                                    <span class="app-meta-chip">
-                                        <i class="fas fa-map-marker-alt"></i>@app.TuitionPost.Area
-                                    </span>
-                                }
-                                @if (!string.IsNullOrEmpty(app.TuitionPost.StudentClass))
-                                {
-                                    <span class="app-meta-chip">
-                                        <i class="fas fa-graduation-cap"></i>@app.TuitionPost.StudentClass
-                                    </span>
-                                }
-                                @if (!string.IsNullOrEmpty(app.TuitionPost.Subjects))
-                                {
-                                    <span class="app-meta-chip">
-                                        <i class="fas fa-book"></i>@app.TuitionPost.Subjects
-                                    </span>
+                                    <span><i class="fas fa-map-marker-alt" style="color:#1F3B2C;"></i> @app.TuitionPost.Area</span>
                                 }
                                 @if (!string.IsNullOrEmpty(app.TuitionPost.Salary))
                                 {
-                                    <span class="app-meta-chip salary">
-                                        <i class="fas fa-money-bill-wave"></i>৳@app.TuitionPost.Salary/month
-                                    </span>
+                                    <span><i class="fas fa-money-bill-wave" style="color:#1F3B2C;"></i> ৳@app.TuitionPost.Salary</span>
+                                }
+                                @if (!string.IsNullOrEmpty(app.TuitionPost.TuitionCode))
+                                {
+                                    <span><i class="fas fa-hashtag" style="color:#1F3B2C;"></i> @app.TuitionPost.TuitionCode</span>
                                 }
                             </div>
                         }
-                        else
-                        {
-                            <h5 class="app-title">
-                                <i class="fas fa-clipboard-list"></i>
-                                Tuition Application #@app.Id
-                            </h5>
-                        }
-
-                        <!-- ===== Applicant Info ===== -->
-                        <div class="app-info-box">
-                            <strong>Your Info:</strong>
-                            <span class="info-item"><i class="fas fa-user"></i>@app.ApplicantName</span>
-                            <span class="info-item"><i class="fas fa-phone"></i>@app.PhoneNumber</span>
-                            @if (!string.IsNullOrEmpty(app.Email))
-                            {
-                                <span class="info-item"><i class="fas fa-envelope"></i>@app.Email</span>
-                            }
-                        </div>
-
-                        <!-- ===== Admin Note (if any) ===== -->
-                        @if (!string.IsNullOrEmpty(app.AdminNote))
-                        {
-                            <div class="app-admin-note">
-                                <i class="fas fa-sticky-note"></i>
-                                <div>
-                                    <strong>Admin Note</strong>
-                                    @app.AdminNote
-                                </div>
-                            </div>
-                        }
-
                     </div>
                 }
             }
-        </div>
-
-        <!-- ============================================================ -->
-        <!-- ===== FOOTER NOTE ===== -->
-        <!-- ============================================================ -->
-        <div class="footer-note">
-            <i class="fas fa-info-circle"></i>
-            More features will be available soon. Stay tuned!
         </div>
 
     </div>

@@ -56,5 +56,16 @@ namespace Tutorbub.Models
         public int ShortlistedApplications { get; set; }
         public int SelectedApplications { get; set; }
         public int RejectedApplications { get; set; }
+
+        // ============================================================
+        // ===== TEACHER POST STATS =====
+        // ============================================================
+        public TeacherDashboardStats Stats { get; set; } = new TeacherDashboardStats();
+        public List<TeacherPostStat> PostStats { get; set; } = new List<TeacherPostStat>();
+
+        // ============================================================
+        // ===== ✅ NEW: DIRECT TUTOR REQUESTS (Student -> Teacher) =====
+        // ============================================================
+        public List<TutorRequest> TutorRequests { get; set; } = new List<TutorRequest>();
     }
 }

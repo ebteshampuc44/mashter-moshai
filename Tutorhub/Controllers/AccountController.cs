@@ -1,4 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿// 📁 Controllers/AccountController.cs
+// লোকেশন: Tutorbub/Controllers/AccountController.cs
+
+using Microsoft.AspNetCore.Mvc;
 using Tutorbub.Models;
 using System.Text.RegularExpressions;
 
@@ -44,6 +47,7 @@ namespace Tutorbub.Controllers
                 HttpContext.Session.SetString("UserFullName", user.FullName);
                 HttpContext.Session.SetString("UserEmail", user.Email);
                 HttpContext.Session.SetString("UserRole", user.Role);
+                HttpContext.Session.SetString("ProfileImageLink", user.ProfileImageLink ?? ""); // ✅ নতুন যোগ হলো
 
                 // ✅ returnUrl থাকলে সেখানে ফিরে যাও (local URL হলে)
                 if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))

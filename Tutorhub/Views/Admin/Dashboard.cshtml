@@ -5,7 +5,6 @@
     Layout = "_Layout";
 
     var pendingTeacherCount = 0;
-    var pendingTutorRequests = 0;
 
     try
     {
@@ -14,14 +13,10 @@
 
         var requests = dbHelper.GetAllTeacherRequests();
         pendingTeacherCount = requests.Count(r => r.Status == "Pending");
-
-        var tutorReqStats = dbHelper.GetTutorRequestStats();
-        pendingTutorRequests = tutorReqStats.Pending;
     }
     catch { }
 
     ViewBag.PendingCount = pendingTeacherCount;
-    ViewBag.PendingTutorRequests = pendingTutorRequests;
 }
 
 <style>

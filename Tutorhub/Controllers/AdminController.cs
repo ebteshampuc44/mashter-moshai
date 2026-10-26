@@ -43,13 +43,48 @@ namespace Tutorbub.Controllers
             var users = _dbHelper.GetAllUsers();
             var requests = _dbHelper.GetAllTeacherRequests();
             var pendingCount = requests.Count(r => r.Status == "Pending");
-            var tutorReqStats = _dbHelper.GetTutorRequestStats();
 
+            // Tutor Request স্ট্যাটাস বাদ দেওয়া হয়েছে যেহেতু এটি অ্যাডমিন প্যানেলে নেই
             ViewBag.UserCount = users.Count;
             ViewBag.PendingCount = pendingCount;
-            ViewBag.PendingTutorRequests = tutorReqStats.Pending;
 
             return View(users);
+        }
+
+        // ============================================================
+        // ===== ✅ TEACHER OVERVIEW =====
+        // ============================================================
+        [HttpGet]
+        public IActionResult TeacherOverview(int? id)
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin") return RedirectToAction("Login", "Account");
+
+            // সব টিচারের লিস্ট
+            var allTeachers = _dbHelper.GetAllTeachers();
+            ViewBag.AllTeachers = allTeachers;
+
+            // যদি নির্দিষ্ট কোনো টিচার সিলেক্ট করা থাকে
+            if (id.HasValue)
+            {
+                var selectedTeacher = allTeachers.FirstOrDefault(t => t.Id == id.Value);
+                if (selectedTeacher != null)
+                {
+                    ViewBag.SelectedTeacher = selectedTeacher;
+
+                    // ১. তার পোস্ট স্ট্যাটস
+                    ViewBag.TeacherStats = _dbHelper.GetTeacherDashboardStats(selectedTeacher.Id);
+                    ViewBag.PostStats = _dbHelper.GetTeacherPostStats(selectedTeacher.Id);
+
+                    // ২. তার কাছে আসা Direct Requests
+                    ViewBag.DirectRequests = _dbHelper.GetTeacherDirectRequests(selectedTeacher.FullName);
+
+                    // ৩. তার Tuition Applications
+                    ViewBag.TuitionApps = _dbHelper.GetUserTuitionApplications(selectedTeacher.Id);
+                }
+            }
+
+            return View();
         }
 
         // ============================================================
@@ -371,26 +406,27 @@ namespace Tutorbub.Controllers
         }
 
         // ============================================================
-        // ===== TUTOR REQUESTS (Student → Admin) =====
+        // ===== TUTOR REQUESTS (Student → Teacher) =====
         // ============================================================
 
-        [HttpGet]
-        public IActionResult TutorRequests(string status = "all")
-        {
-            var role = HttpContext.Session.GetString("UserRole");
-            if (role != "Admin") return RedirectToAction("Login", "Account");
-
-            var requests = _dbHelper.GetAllTutorRequests(status);
-            var stats = _dbHelper.GetTutorRequestStats();
-
-            ViewBag.TotalCount = stats.Total;
-            ViewBag.PendingCount = stats.Pending;
-            ViewBag.ContactedCount = stats.Contacted;
-            ViewBag.CompletedCount = stats.Completed;
-            ViewBag.CurrentStatus = status;
-
-            return View(requests);
-        }
+        // ❌ অ্যাডমিন প্যানেল থেকে Tutor Requests পেজ বাদ দেওয়া হয়েছে
+        // [HttpGet]
+        // public IActionResult TutorRequests(string status = "all")
+        // {
+        //     var role = HttpContext.Session.GetString("UserRole");
+        //     if (role != "Admin") return RedirectToAction("Login", "Account");
+        //
+        //     var requests = _dbHelper.GetAllTutorRequests(status);
+        //     var stats = _dbHelper.GetTutorRequestStats();
+        //
+        //     ViewBag.TotalCount = stats.Total;
+        //     ViewBag.PendingCount = stats.Pending;
+        //     ViewBag.ContactedCount = stats.Contacted;
+        //     ViewBag.CompletedCount = stats.Completed;
+        //     ViewBag.CurrentStatus = status;
+        //
+        //     return View(requests);
+        // }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -659,11 +695,9 @@ namespace Tutorbub.Controllers
             if (model.SliderIntervalSeconds > 60)
                 model.SliderIntervalSeconds = 60;
 
-            // ✅ Clamp logo size (24–100)
             if (model.LogoSizePx < 24) model.LogoSizePx = 24;
             if (model.LogoSizePx > 100) model.LogoSizePx = 100;
 
-            // ✅ Normalize logo shape
             var shape = (model.LogoShape ?? "circle").Trim().ToLowerInvariant();
             if (shape != "circle" && shape != "square" && shape != "rounded")
                 shape = "circle";
@@ -720,9 +754,6 @@ namespace Tutorbub.Controllers
             }
         }
 
-        // ============================================================
-        // ===== ✅ UPLOAD TUTOR SECTION IMAGE (Home page) =====
-        // ============================================================
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> UploadTutorSectionImage(IFormFile tutorSectionImage)
@@ -766,9 +797,6 @@ namespace Tutorbub.Controllers
             }
         }
 
-        // ============================================================
-        // ===== ✅ UPLOAD LOGO (Navbar / Footer) =====
-        // ============================================================
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> UploadLogo(IFormFile logoImage, string target = "navbar")
@@ -998,7 +1026,6 @@ namespace Tutorbub.Controllers
             }
         }
 
-        // ✅ NEW: Toggle Show on Home Page
         [HttpPost]
         [ValidateAntiForgeryToken]
         public IActionResult ToggleShowOnHome(int id)

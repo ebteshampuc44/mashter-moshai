@@ -45,8 +45,8 @@
 
 <style>
     /* ======================
-                       PAGE WRAPPER
-                       ====================== */
+                               PAGE WRAPPER
+                               ====================== */
     .ft-page {
         background: #F3F1E7;
         padding: 40px 20px 70px;
@@ -206,6 +206,9 @@
         font-weight: 700;
         color: #1F3B2C;
         font-size: 15px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
 
     .fb-post-user-info .time {
@@ -693,8 +696,8 @@
         }
 
     /* ======================
-                           LIST HEADER & SORT
-                           ====================== */
+                                   LIST HEADER & SORT
+                                   ====================== */
     .list-header {
         display: flex;
         justify-content: space-between;
@@ -1942,7 +1945,12 @@
                                         }
                                     </div>
                                     <div class="fb-post-user-info">
-                                        <h6>@post.UserFullName <span class="badge bg-success" style="font-size:10px;">Teacher</span></h6>
+                                        <h6>
+                                            <span onclick="viewTeacherProfile(@post.UserId)" style="cursor: pointer; color: #1F3B2C; text-decoration: none; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1">
+                                                @post.UserFullName
+                                            </span>
+                                            <span class="badge bg-success" style="font-size:10px;">Teacher</span>
+                                        </h6>
                                         <div class="time">
                                             <i class="far fa-clock"></i> @post.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")
                                         </div>
@@ -2837,6 +2845,9 @@
         (function () {
             'use strict';
 
+            // ✅ Check Login Status in JS
+            var isLoggedIn = @(isLoggedIn ? "true" : "false");
+
             var allTutors = window.allTutors || [];
 
             function stars(rating) {
@@ -3084,6 +3095,13 @@
             }
 
             function openRequestTutorModal(tutorId) {
+                // ✅ লগইন চেক
+                if (!isLoggedIn) {
+                    alert('রিকোয়েস্ট পাঠাতে অনুগ্রহ করে প্রথমে লগইন করুন।');
+                    window.location.href = '/Account/Login?returnUrl=/FindTutor/Index';
+                    return;
+                }
+
                 var t = tutorId ? allTutors.find(function (x) { return x.id === tutorId; }) : null;
 
                 var headerInfo = t
@@ -3175,6 +3193,7 @@
                 var reqId = generateRequestId();
 
                 var fd = new FormData();
+                // এখানে নিশ্চিত করা হলো যে TutorId এবং TutorName সঠিকভাবে যাচ্ছে
                 fd.append('tutorId', tutor ? tutor.tutorId : '');
                 fd.append('tutorName', tutor ? tutor.fullName : '');
                 fd.append('studentName', name);
@@ -3223,6 +3242,13 @@
             }
 
             function openNeedTutorModal() {
+                // ✅ লগইন চেক
+                if (!isLoggedIn) {
+                    alert('রিকোয়েস্ট পাঠাতে অনুগ্রহ করে প্রথমে লগইন করুন।');
+                    window.location.href = '/Account/Login?returnUrl=/FindTutor/Index';
+                    return;
+                }
+
                 document.getElementById('needTutorBody').innerHTML = ''
                     + '<form class="ft-form" onsubmit="submitNeedTutor(event)">'
                     + '  <div class="form-intro"><p>Don\'t have a specific tutor in mind? Tell us your requirements and our <strong>admin team</strong> will find the best tutor for you.</p></div>'
@@ -3341,6 +3367,13 @@
             }
 
             function openAreaTuitionModal() {
+                // ✅ লগইন চেক
+                if (!isLoggedIn) {
+                    alert('রিকোয়েস্ট পাঠাতে অনুগ্রহ করে প্রথমে লগইন করুন।');
+                    window.location.href = '/Account/Login?returnUrl=/FindTutor/Index';
+                    return;
+                }
+
                 document.getElementById('areaTuitionBody').innerHTML = ''
                     + '<form class="ft-form" onsubmit="submitAreaTuition(event)">'
                     + '  <div class="form-intro"><p>Want a tutor <strong>in your own area</strong>? Fill in the details below and our <strong>admin team</strong> will find suitable tutors near you.</p></div>'
@@ -3472,6 +3505,115 @@
                 if (tutor) viewProfile(tutor.id);
                 else alert('No tutor found with Tutor ID: ' + id);
             }
+
+            // ============================================================
+            // ===== TEACHER PROFILE FROM POST =====
+            // ============================================================
+            window.viewTeacherProfile = async function (userId) {
+                const modalBody = document.getElementById('tutorProfileBody');
+                modalBody.innerHTML = `
+                                    <div class="text-center py-5">
+                                        <div class="spinner-border text-success" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2 text-muted">Loading teacher profile...</p>
+                                    </div>`;
+
+                new bootstrap.Modal(document.getElementById('tutorProfileModal')).show();
+
+                try {
+                    const res = await fetch('/FindTutor/GetTeacherProfile?userId=' + userId);
+                    const data = await res.json();
+
+                    if (!data.success) {
+                        modalBody.innerHTML = `<div class="alert alert-danger text-center">${data.message || 'Failed to load profile'}</div>`;
+                        return;
+                    }
+
+                    const u = data.user;
+
+                    const names = (u.fullName || 'T').split(' ');
+                    const initials = names.length >= 2
+                        ? (names[0][0] + names[1][0]).toUpperCase()
+                        : (names[0][0] || 'T').toUpperCase();
+
+                    const avatarContent = u.profileImageLink
+                        ? `<img src="${escapeHtml(u.profileImageLink)}" alt="${escapeHtml(u.fullName)}" />`
+                        : initials;
+
+                    let html = `
+                                        <div class="tp-header">
+                                            <div class="tp-avatar">${avatarContent}<div class="v-tick"><i class="fas fa-check"></i></div></div>
+                                            <div style="flex:1; min-width:0;">
+                                                <h4 class="tp-name">${escapeHtml(u.fullName)} <i class="fas fa-check-circle" style="color:#2ecc71;"></i></h4>
+                                                <div class="tp-rating-line" style="color:#6B7568; font-size:13px;">
+                                                    <span><i class="fas fa-envelope me-1"></i>${escapeHtml(u.email || 'Not provided')}</span>
+                                                </div>
+                                                <div style="margin-top:8px;">
+                                                    <span style="background:#d4edda; color:#155724; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; text-transform:uppercase;">Verified Teacher</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="tp-stat-row">
+                                            <div class="tp-stat">
+                                                <div class="num" style="font-size:16px;">${escapeHtml(u.yearsOfExperience || 'N/A')}</div>
+                                                <div class="lbl">Experience</div>
+                                            </div>
+                                            <div class="tp-stat">
+                                                <div class="num" style="font-size:16px;">${escapeHtml(u.gender || 'N/A')}</div>
+                                                <div class="lbl">Gender</div>
+                                            </div>
+                                            <div class="tp-stat">
+                                                <div class="num" style="font-size:16px;">${escapeHtml(u.ageRange || 'N/A')}</div>
+                                                <div class="lbl">Age</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="tp-block">
+                                            <div class="tp-block-title"><i class="fas fa-graduation-cap"></i>Education</div>
+                                            <div class="tp-info-grid">
+                                                <div class="tp-info-item"><div class="label">Qualification</div><div class="value">${escapeHtml(u.educationLevel || 'Not provided')}</div></div>
+                                                <div class="tp-info-item"><div class="label">Degree</div><div class="value">${escapeHtml(u.examDegreeTitle || 'Not provided')}</div></div>
+                                                <div class="tp-info-item"><div class="label">Institution</div><div class="value">${escapeHtml(u.institutionName || 'Not provided')}</div></div>
+                                                <div class="tp-info-item"><div class="label">Passing Year</div><div class="value">${escapeHtml(u.passingYear || 'Not provided')}</div></div>
+                                            </div>
+                                        </div>`;
+
+                    if (u.mobileNumber || u.country || u.streetAddress) {
+                        html += `
+                                        <div class="tp-block">
+                                            <div class="tp-block-title"><i class="fas fa-map-marker-alt"></i>Contact & Address</div>
+                                            <div class="tp-info-grid">
+                                                ${u.mobileNumber ? `<div class="tp-info-item"><div class="label">Mobile</div><div class="value">${escapeHtml(u.mobileNumber)}</div></div>` : ''}
+                                                ${u.country ? `<div class="tp-info-item"><div class="label">Country</div><div class="value">${escapeHtml(u.country)}</div></div>` : ''}
+                                                ${u.permanentAddress ? `<div class="tp-info-item" style="grid-column: 1/-1;"><div class="label">Permanent Address</div><div class="value">${escapeHtml(u.permanentAddress)}</div></div>` : ''}
+                                            </div>
+                                        </div>`;
+                    }
+
+                    let linksHtml = '';
+                    if (u.cvLink) linksHtml += `<a href="${escapeHtml(u.cvLink)}" target="_blank" class="tp-chip" style="background:#e3f2fd; color:#1565c0; text-decoration:none;"><i class="fas fa-file-pdf"></i> View CV</a>`;
+                    if (u.githubProfile) linksHtml += `<a href="${escapeHtml(u.githubProfile)}" target="_blank" class="tp-chip" style="background:#f5f5f5; color:#333; text-decoration:none;"><i class="fab fa-github"></i> GitHub</a>`;
+                    if (u.linkedInProfile) linksHtml += `<a href="${escapeHtml(u.linkedInProfile)}" target="_blank" class="tp-chip" style="background:#e3f2fd; color:#0a66c2; text-decoration:none;"><i class="fab fa-linkedin"></i> LinkedIn</a>`;
+                    if (u.portfolioLink) linksHtml += `<a href="${escapeHtml(u.portfolioLink)}" target="_blank" class="tp-chip" style="background:#fce4ec; color:#c2185b; text-decoration:none;"><i class="fas fa-globe"></i> Portfolio</a>`;
+
+                    if (linksHtml) {
+                        html += `
+                                        <div class="tp-block">
+                                            <div class="tp-block-title"><i class="fas fa-link"></i>Professional Links</div>
+                                            <div class="tp-chips">${linksHtml}</div>
+                                        </div>`;
+                    }
+
+                    // Contact CTA removed as requested
+
+                    modalBody.innerHTML = html;
+
+                } catch (err) {
+                    modalBody.innerHTML = `<div class="alert alert-danger text-center">Error loading profile: ${err.message}</div>`;
+                }
+            };
 
             window.viewProfile = viewProfile;
             window.openRequestTutorModal = openRequestTutorModal;
