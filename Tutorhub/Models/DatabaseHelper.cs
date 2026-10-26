@@ -1103,7 +1103,7 @@ namespace Tutorbub.Models
                     stats.TotalComments = Convert.ToInt32(cmd.ExecuteScalar());
                 }
 
-                // ৪. মোট পাওয়া টিচার (যারা পোস্টে কমেন্ট করেছে এবং তাদের রোল Teacher)
+                // ৪. মোট পাওয়া টিচার (যারা পোস্টে কমেন্ট করেছে এবং তাদের রোল Teacher)
                 using (var cmd = new NpgsqlCommand(@"
                     SELECT COUNT(DISTINCT c.""UserId"") FROM ""TuitionCircularComments"" c
                     INNER JOIN ""TuitionCircularPosts"" p ON c.""PostId"" = p.""Id""
@@ -2921,6 +2921,184 @@ namespace Tutorbub.Models
                 return command.ExecuteNonQuery() > 0;
             }
             catch { return false; }
+        }
+
+        // ============================================================
+        // ===== ✅ USER OVERVIEW STATS (Admin) — NEW =====
+        // ============================================================
+        public UserDashboardStats GetUserOverviewStats(int userId)
+        {
+            var stats = new UserDashboardStats();
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                connection.Open();
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TuitionCircularPosts"" WHERE ""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalPosts = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COALESCE(SUM(""LikeCount""),0) FROM ""TuitionCircularPosts"" WHERE ""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalLikes = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COUNT(*) FROM ""TuitionCircularComments"" c
+                      INNER JOIN ""TuitionCircularPosts"" p ON c.""PostId"" = p.""Id""
+                      WHERE p.""UserId"" = @uid", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalComments = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                using (var cmd = new NpgsqlCommand(
+                    @"SELECT COUNT(DISTINCT c.""UserId"") FROM ""TuitionCircularComments"" c
+                      INNER JOIN ""TuitionCircularPosts"" p ON c.""PostId"" = p.""Id""
+                      INNER JOIN ""Users"" u ON c.""UserId"" = u.""Id""
+                      WHERE p.""UserId"" = @uid AND u.""Role"" = 'Teacher'", connection))
+                {
+                    cmd.Parameters.AddWithValue("@uid", userId);
+                    stats.TotalTeachersConnected = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetUserOverviewStats error: " + ex.Message);
+            }
+            return stats;
+        }
+
+        // ============================================================
+        // ===== ✅ USER POST LIST with TEACHER ENGAGEMENT — NEW =====
+        // ============================================================
+        public List<UserPostStat> GetUserPostStats(int userId)
+        {
+            var list = new List<UserPostStat>();
+            string query = @"
+                SELECT p.""Id"", p.""Content"", p.""ImageUrl"", p.""PreferredArea"", p.""ClassLevel"",
+                       p.""Subjects"", p.""Budget"", p.""LikeCount"", p.""CreatedAt"",
+                       (SELECT COUNT(*) FROM ""TuitionCircularComments"" WHERE ""PostId"" = p.""Id"") AS ""CommentCount"",
+                       (SELECT COUNT(DISTINCT c.""UserId"") FROM ""TuitionCircularComments"" c
+                        INNER JOIN ""Users"" u ON c.""UserId"" = u.""Id""
+                        WHERE c.""PostId"" = p.""Id"" AND u.""Role"" = 'Teacher') AS ""TeacherResponses""
+                FROM ""TuitionCircularPosts"" p
+                WHERE p.""UserId"" = @uid
+                ORDER BY p.""CreatedAt"" DESC";
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@uid", userId);
+                connection.Open();
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(new UserPostStat
+                    {
+                        PostId = reader.GetInt32(reader.GetOrdinal("Id")),
+                        Content = reader["Content"]?.ToString() ?? "",
+                        ImageUrl = reader["ImageUrl"]?.ToString(),
+                        PreferredArea = reader["PreferredArea"]?.ToString(),
+                        ClassLevel = reader["ClassLevel"]?.ToString(),
+                        Subjects = reader["Subjects"]?.ToString(),
+                        Budget = reader["Budget"]?.ToString(),
+                        LikeCount = Convert.ToInt32(reader["LikeCount"]),
+                        CommentCount = Convert.ToInt32(reader["CommentCount"]),
+                        TeacherResponses = Convert.ToInt32(reader["TeacherResponses"]),
+                        CreatedAt = reader["CreatedAt"] as DateTime? ?? DateTime.UtcNow
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetUserPostStats error: " + ex.Message);
+            }
+            return list;
+        }
+
+        // ============================================================
+        // ===== ✅ TEACHERS WHO RESPONDED TO A USER'S POSTS — NEW =====
+        // ============================================================
+        public List<TeacherEngagement> GetTeachersEngagedWithUser(int userId)
+        {
+            var list = new List<TeacherEngagement>();
+            string query = @"
+                SELECT u.""Id"" AS ""TeacherId"", u.""FullName"", u.""Email"", u.""ProfileImageLink"",
+                       COUNT(c.""Id"") AS ""ResponseCount"",
+                       MAX(c.""CreatedAt"") AS ""LastResponseAt""
+                FROM ""TuitionCircularComments"" c
+                INNER JOIN ""TuitionCircularPosts"" p ON c.""PostId"" = p.""Id""
+                INNER JOIN ""Users"" u ON c.""UserId"" = u.""Id""
+                WHERE p.""UserId"" = @uid AND u.""Role"" = 'Teacher'
+                GROUP BY u.""Id"", u.""FullName"", u.""Email"", u.""ProfileImageLink""
+                ORDER BY MAX(c.""CreatedAt"") DESC";
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@uid", userId);
+                connection.Open();
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(new TeacherEngagement
+                    {
+                        TeacherId = reader.GetInt32(reader.GetOrdinal("TeacherId")),
+                        FullName = reader["FullName"]?.ToString() ?? "Teacher",
+                        Email = reader["Email"]?.ToString() ?? "",
+                        ProfileImageLink = reader["ProfileImageLink"]?.ToString(),
+                        ResponseCount = Convert.ToInt32(reader["ResponseCount"]),
+                        LastResponseAt = reader["LastResponseAt"] as DateTime? ?? DateTime.UtcNow
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetTeachersEngagedWithUser error: " + ex.Message);
+            }
+            return list;
+        }
+
+        // ============================================================
+        // ===== ✅ ALL USERS EXCEPT ADMIN — NEW =====
+        // ============================================================
+        public List<User> GetAllNonAdminUsers()
+        {
+            var list = new List<User>();
+            string query = @"
+                SELECT ""Id"", ""UserName"", ""Password"", ""FullName"", ""Email"", ""CreatedAt"",
+                       ""LastLoginAt"", ""Role"", ""IsActive"", ""MobileNumber"", ""ProfileImage"",
+                       ""Gender"", ""AgeRange"", ""PrimaryDeviceType"", ""YearsOfExperience"", ""AreaType"",
+                       ""Country"", ""StreetAddress"", ""PermanentAddress"", ""EducationLevel"",
+                       ""CurrentStudyStatus"", ""ExamDegreeTitle"", ""InstitutionName"", ""PassingYear"",
+                       ""IsCSEStudent"", ""CvLink"", ""GithubProfile"", ""PortfolioLink"",
+                       ""LinkedInProfile"", ""ProfileImageLink""
+                FROM ""Users""
+                WHERE ""Role"" <> 'Admin'
+                ORDER BY ""Id"" DESC";
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+                using var command = new NpgsqlCommand(query, connection);
+                connection.Open();
+                using var reader = command.ExecuteReader();
+                while (reader.Read()) list.Add(MapUser(reader));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetAllNonAdminUsers error: " + ex.Message);
+            }
+            return list;
         }
 
         // ============================================================

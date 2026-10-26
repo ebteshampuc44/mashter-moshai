@@ -228,10 +228,17 @@
             </a>
         </li>
 
-        <!-- ✅ নতুন যুক্ত করা হলো: Teacher Overview -->
+        <!-- ✅ Teacher Overview -->
         <li>
             <a asp-controller="Admin" asp-action="TeacherOverview" class="@(currentAction == "TeacherOverview" ? "active" : "")">
                 <i class="fas fa-chart-line"></i> Teacher Overview
+            </a>
+        </li>
+
+        <!-- ✅ নতুন যুক্ত করা হলো: User Overview -->
+        <li>
+            <a asp-controller="Admin" asp-action="UserOverview" class="@(currentAction == "UserOverview" ? "active" : "")">
+                <i class="fas fa-users-viewfinder"></i> User Overview
             </a>
         </li>
 

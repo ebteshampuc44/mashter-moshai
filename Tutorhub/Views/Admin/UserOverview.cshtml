@@ -1,0 +1,596 @@
+﻿@using Tutorbub.Models
+@{
+    ViewData["Title"] = "User Overview";
+    Layout = "_Layout";
+
+    var allUsers = ViewBag.AllUsers as List<User> ?? new List<User>();
+    var selected = ViewBag.SelectedUser as User;
+
+    var stats = ViewBag.UserStats as UserDashboardStats ?? new UserDashboardStats();
+    var postStats = ViewBag.UserPostStats as List<UserPostStat> ?? new List<UserPostStat>();
+    var teachers = ViewBag.TeachersEngaged as List<TeacherEngagement> ?? new List<TeacherEngagement>();
+    var apps = ViewBag.UserTuitionApps as List<TuitionApplication> ?? new List<TuitionApplication>();
+}
+
+<style>
+    /* ===== Main Content Layout ===== */
+    .admin-main-content {
+        margin-left: 250px;
+        padding: 20px;
+        min-height: calc(100vh - 80px);
+    }
+
+    /* ===== User List Sidebar ===== */
+    .user-list-card {
+        background: white;
+        border-radius: 14px;
+        border: 1px solid rgba(0,0,0,0.04);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+        height: fit-content;
+        position: sticky;
+        top: 100px;
+        max-height: calc(100vh - 120px);
+        overflow-y: auto;
+    }
+
+        .user-list-card::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .user-list-card::-webkit-scrollbar-thumb {
+            background: #D5CFB8;
+            border-radius: 10px;
+        }
+
+    .user-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 15px 20px;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+    }
+
+        .user-item:hover {
+            background: #F8F9F5;
+        }
+
+        .user-item.active {
+            background: #E8F0E9;
+            border-left: 4px solid #1F3B2C;
+        }
+
+    .u-avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        object-fit: cover;
+        background: #1F3B2C;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 16px;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+        .u-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+    .u-info .u-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: #1F3B2C;
+        line-height: 1.3;
+    }
+
+    .u-info .u-email {
+        font-size: 11.5px;
+        color: #8A9188;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .u-role-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 9.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-top: 2px;
+    }
+
+        .u-role-badge.teacher {
+            background: #d1ecf1;
+            color: #0c6b7c;
+        }
+
+        .u-role-badge.user {
+            background: #eef2f6;
+            color: #6B7568;
+        }
+
+    /* ===== Dashboard Stats ===== */
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 14px;
+        padding: 20px;
+        border-left: 5px solid #ccc;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        transition: transform 0.2s;
+    }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .stat-card.posts {
+            border-left-color: #3498db;
+        }
+
+        .stat-card.likes {
+            border-left-color: #e74c3c;
+        }
+
+        .stat-card.comments {
+            border-left-color: #f39c12;
+        }
+
+        .stat-card.teachers {
+            border-left-color: #2ecc71;
+        }
+
+        .stat-card .num {
+            font-size: 28px;
+            font-weight: 800;
+            color: #1F3B2C;
+            line-height: 1.1;
+            font-family: 'Georgia', serif;
+        }
+
+        .stat-card .lbl {
+            font-size: 12px;
+            color: #6B7568;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+    /* ===== Detail Cards ===== */
+    .detail-card {
+        background: white;
+        border-radius: 14px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.03);
+        border: 1px solid rgba(0,0,0,0.04);
+    }
+
+    .detail-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1F3B2C;
+        margin-bottom: 16px;
+        border-bottom: 2px solid #F3F1E7;
+        padding-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .detail-title i {
+            font-size: 15px;
+        }
+
+    /* ===== Empty State ===== */
+    .empty-placeholder {
+        text-align: center;
+        padding: 60px 20px;
+        color: #8A9188;
+        background: white;
+        border-radius: 16px;
+        border: 2px dashed #E7E4D9;
+    }
+
+        .empty-placeholder i {
+            font-size: 48px;
+            color: #D5CFB8;
+            margin-bottom: 16px;
+            display: block;
+        }
+
+    /* ===== Scrollable List Areas ===== */
+    .scroll-area {
+        max-height: 300px;
+        overflow-y: auto;
+        padding-right: 5px;
+    }
+
+        .scroll-area::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .scroll-area::-webkit-scrollbar-thumb {
+            background: #E5E1D3;
+            border-radius: 4px;
+        }
+
+    .list-item {
+        background: #FAF9F4;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        border-left: 3px solid #1F3B2C;
+    }
+
+        .list-item.post {
+            border-left-color: #3498db;
+        }
+
+        .list-item.teacher-item {
+            border-left-color: #2ecc71;
+        }
+
+        .list-item.app {
+            border-left-color: #f39c12;
+        }
+
+    /* ===== Badge helpers ===== */
+    .badge-teacher-yes {
+        background: #d4edda;
+        color: #155724;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: 700;
+    }
+
+    .badge-teacher-no {
+        background: #eef2f6;
+        color: #6B7568;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: 600;
+    }
+
+    /* ===== Responsive ===== */
+    @@media (max-width: 992px) {
+        .admin-main-content {
+            margin-left: 0;
+            padding: 15px;
+        }
+
+        .stat-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .user-list-card {
+            position: static;
+            margin-bottom: 20px;
+            max-height: 400px;
+        }
+    }
+
+    @@media (max-width: 576px) {
+        .stat-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<!-- ===== Admin Sidebar ===== -->
+<partial name="_AdminSidebar" />
+
+<!-- ===== Main Content ===== -->
+<div class="admin-main-content">
+
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 style="color:#1F3B2C; margin:0; font-weight:800;">
+                <i class="fas fa-users-viewfinder me-2"></i>User Overview
+            </h2>
+            <p style="color:#6B7568; margin:6px 0 0 0; font-size:14px;">
+                ইউজারদের পোস্ট, টিচার রেসপন্স এবং অ্যাক্টিভিটি ট্র্যাক করুন
+            </p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+
+        <!-- ===== Left Sidebar: User List ===== -->
+        <div class="col-lg-3">
+            <div class="user-list-card">
+                <div style="padding: 16px 20px; background: #1F3B2C; color: white; font-weight: 700; border-radius: 14px 14px 0 0; position: sticky; top: 0; z-index: 10;">
+                    All Users (@allUsers.Count)
+                </div>
+
+                @if (allUsers.Count == 0)
+                {
+                    <div class="text-center p-4 text-muted" style="font-size: 13px;">
+                        No users found.
+                    </div>
+                }
+                else
+                {
+                    foreach (var u in allUsers)
+                    {
+                        var isActive = selected != null && selected.Id == u.Id;
+                        var roleClass = u.Role == "Teacher" ? "teacher" : "user";
+
+                        <a href="/Admin/UserOverview?id=@u.Id" class="user-item @(isActive ? "active" : "")">
+                            <div class="u-avatar">
+                                @if (!string.IsNullOrEmpty(u.ProfileImageLink))
+                                {
+                                    <img src="@u.ProfileImageLink" alt="@u.FullName" />
+                                }
+                                else
+                                {
+                                    @(u.FullName.Length > 0 ? u.FullName.Substring(0, 1).ToUpper() : "U")
+                                }
+                            </div>
+                            <div class="u-info" style="min-width: 0;">
+                                <div class="u-name">@u.FullName</div>
+                                <div class="u-email">
+                                    <i class="fas fa-envelope me-1" style="font-size:10px;"></i>@u.Email
+                                </div>
+                                <span class="u-role-badge @roleClass">@u.Role</span>
+                            </div>
+                        </a>
+                    }
+                }
+            </div>
+        </div>
+
+        <!-- ===== Right Content Area ===== -->
+        <div class="col-lg-9">
+            @if (selected == null)
+            {
+                <div class="empty-placeholder">
+                    <i class="fas fa-hand-pointer"></i>
+                    <h4 style="color:#1F3B2C; font-weight:700;">Select a User</h4>
+                    <p style="font-size: 15px;">বাম দিকের তালিকা থেকে যেকোনো একজন ইউজার সিলেক্ট করুন তার অ্যাক্টিভিটি দেখতে।</p>
+                </div>
+            }
+            else
+            {
+                <!-- ১. ইউজার প্রোফাইল হেডার -->
+                <div class="detail-card d-flex align-items-center gap-4 flex-wrap">
+                    <img src="@(string.IsNullOrEmpty(selected.ProfileImageLink) ? "https://ui-avatars.com/api/?name=" + Uri.EscapeDataString(selected.FullName) + "&background=1F3B2C&color=fff&size=100" : selected.ProfileImageLink)"
+                         style="width: 85px; height: 85px; border-radius: 50%; object-fit: cover; border: 4px solid #E8F0E9;" />
+                    <div style="flex: 1; min-width: 200px;">
+                        <h3 style="margin: 0 0 6px; color: #1F3B2C; font-weight: 800;">@selected.FullName</h3>
+                        <div style="font-size: 13.5px; color: #6B7568; display: flex; gap: 15px; flex-wrap: wrap;">
+                            <span><i class="fas fa-envelope me-1 text-muted"></i> @selected.Email</span>
+                            <span><i class="fas fa-phone me-1 text-muted"></i> @(string.IsNullOrEmpty(selected.MobileNumber) ? "—" : selected.MobileNumber)</span>
+                            <span><i class="far fa-calendar me-1 text-muted"></i> Joined: @selected.CreatedAt.ToString("MMM yyyy")</span>
+                        </div>
+                        <div class="mt-2">
+                            <span class="badge bg-success" style="font-size: 11px; padding: 5px 12px;">@selected.Role</span>
+                            @if (selected.IsActive)
+                            {
+                                <span class="badge bg-primary" style="font-size: 11px; padding: 5px 12px;">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger" style="font-size: 11px; padding: 5px 12px;">Inactive</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ২. স্ট্যাটস গ্রিড -->
+                <div class="stat-grid">
+                    <div class="stat-card posts">
+                        <div class="num">@stats.TotalPosts</div>
+                        <div class="lbl"><i class="fas fa-file-alt text-primary"></i> Total Posts</div>
+                    </div>
+                    <div class="stat-card likes">
+                        <div class="num">@stats.TotalLikes</div>
+                        <div class="lbl"><i class="fas fa-heart text-danger"></i> Total Likes</div>
+                    </div>
+                    <div class="stat-card comments">
+                        <div class="num">@stats.TotalComments</div>
+                        <div class="lbl"><i class="fas fa-comment text-warning"></i> Comments</div>
+                    </div>
+                    <div class="stat-card teachers">
+                        <div class="num">@stats.TotalTeachersConnected</div>
+                        <div class="lbl"><i class="fas fa-chalkboard-teacher text-success"></i> Teachers Responded</div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- ৩. বাম কলাম: Posts -->
+                    <div class="col-md-7">
+                        <div class="detail-card" style="height: calc(100% - 20px);">
+                            <div class="detail-title">
+                                <i class="fas fa-file-alt text-primary"></i>
+                                Posts (@postStats.Count)
+                            </div>
+
+                            @if (postStats.Count == 0)
+                            {
+                                <p class="text-muted text-center py-4" style="font-size: 14px;">কোনো পোস্ট পাওয়া যায়নি।</p>
+                            }
+                            else
+                            {
+                                <div class="scroll-area" style="max-height: 480px;">
+                                    @foreach (var p in postStats)
+                                    {
+                                        <div class="list-item post">
+                                            <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-1">
+                                                <span style="font-size: 11.5px; color: #8A9188;">
+                                                    <i class="far fa-clock"></i> @p.TimeAgo
+                                                </span>
+                                                @if (p.HasTeacherResponse)
+                                                {
+                                                    <span class="badge-teacher-yes">
+                                                        <i class="fas fa-chalkboard-teacher me-1"></i>@p.TeacherResponses teacher(s) responded
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge-teacher-no">
+                                                        <i class="fas fa-hourglass-half me-1"></i>No teacher response yet
+                                                    </span>
+                                                }
+                                            </div>
+
+                                            <p style="font-size: 13.5px; color: #4B5648; margin: 0 0 8px; line-height: 1.5;">
+                                                @p.ContentPreview
+                                            </p>
+
+                                            @if (!string.IsNullOrEmpty(p.PreferredArea) || !string.IsNullOrEmpty(p.Subjects) || !string.IsNullOrEmpty(p.ClassLevel))
+                                            {
+                                                <div style="font-size: 11.5px; color: #6B7568; display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px;">
+                                                    @if (!string.IsNullOrEmpty(p.PreferredArea))
+                                                    {
+                                                        <span><i class="fas fa-map-marker-alt"></i> @p.PreferredArea</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(p.ClassLevel))
+                                                    {
+                                                        <span><i class="fas fa-graduation-cap"></i> @p.ClassLevel</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(p.Subjects))
+                                                    {
+                                                        <span><i class="fas fa-book"></i> @p.Subjects</span>
+                                                    }
+                                                </div>
+                                            }
+
+                                            <div style="font-size: 11.5px; color: #8A9188; display: flex; gap: 12px;">
+                                                <span><i class="fas fa-heart" style="color:#e74c3c;"></i> @p.LikeCount</span>
+                                                <span><i class="fas fa-comment" style="color:#3498db;"></i> @p.CommentCount</span>
+                                                @if (!string.IsNullOrEmpty(p.Budget))
+                                                {
+                                                    <span><i class="fas fa-money-bill-wave" style="color:#2ecc71;"></i> ৳@p.Budget</span>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- ৪. ডান কলাম: Teachers Responded + Applications -->
+                    <div class="col-md-5">
+                        <!-- Teachers Responded -->
+                        <div class="detail-card">
+                            <div class="detail-title">
+                                <i class="fas fa-chalkboard-teacher text-success"></i>
+                                Teachers Responded (@teachers.Count)
+                            </div>
+
+                            @if (teachers.Count == 0)
+                            {
+                                <p class="text-muted text-center py-3" style="font-size: 13px;">
+                                    কোনো টিচার এখনো রেসপন্স করেনি।
+                                </p>
+                            }
+                            else
+                            {
+                                <div class="scroll-area" style="max-height: 220px;">
+                                    @foreach (var t in teachers)
+                                    {
+                                        <div class="list-item teacher-item d-flex align-items-center gap-2">
+                                            <div style="width: 36px; height: 36px; border-radius: 50%; background: #1F3B2C; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; overflow: hidden;">
+                                                @if (!string.IsNullOrEmpty(t.ProfileImageLink))
+                                                {
+                                                    <img src="@t.ProfileImageLink" style="width:100%; height:100%; object-fit:cover;" />
+                                                }
+                                                else
+                                                {
+                                                    @t.Initials
+                                                }
+                                            </div>
+                                            <div style="flex: 1; min-width: 0;">
+                                                <div style="font-size: 13px; font-weight: 700; color: #1F3B2C;">@t.FullName</div>
+                                                <div style="font-size: 11px; color: #8A9188;">
+                                                    <i class="fas fa-comment me-1"></i>@t.ResponseCount response(s) • @t.LastResponseAgo
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Tuition Applications -->
+                        <div class="detail-card">
+                            <div class="detail-title">
+                                <i class="fas fa-user-check text-warning"></i>
+                                Tuition Applications (@apps.Count)
+                            </div>
+
+                            @if (apps.Count == 0)
+                            {
+                                <p class="text-muted text-center py-3" style="font-size: 13px;">
+                                    কোনো অ্যাপ্লিকেশন নেই।
+                                </p>
+                            }
+                            else
+                            {
+                                <div class="scroll-area" style="max-height: 220px;">
+                                    @foreach (var a in apps)
+                                    {
+                                        var statusBg = a.Status == "Pending" ? "warning"
+                                                     : a.Status == "Selected" ? "success"
+                                                     : a.Status == "Shortlisted" ? "primary"
+                                                     : "secondary";
+
+                                        <div class="list-item app">
+                                            <div class="d-flex justify-content-between align-items-center mb-1 gap-1">
+                                                <strong style="color: #1F3B2C; font-size: 12.5px;">
+                                                    @(a.TuitionPost != null ? a.TuitionPost.Title : "Tuition #" + a.TuitionPostId)
+                                                </strong>
+                                                <span class="badge bg-@statusBg text-dark" style="font-size: 9px; padding: 3px 8px;">@a.Status</span>
+                                            </div>
+                                            @if (a.TuitionPost != null)
+                                            {
+                                                <div style="font-size: 11.5px; color: #6B7568; display: flex; flex-wrap: wrap; gap: 10px;">
+                                                    @if (!string.IsNullOrEmpty(a.TuitionPost.Area))
+                                                    {
+                                                        <span><i class="fas fa-map-marker-alt"></i> @a.TuitionPost.Area</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(a.TuitionPost.Salary))
+                                                    {
+                                                        <span><i class="fas fa-money-bill-wave"></i> ৳@a.TuitionPost.Salary</span>
+                                                    }
+                                                </div>
+                                            }
+                                            <div style="font-size: 10.5px; color: #8A9188; margin-top: 4px;">
+                                                <i class="far fa-calendar me-1"></i>@a.AppliedAt.ToString("dd MMM yyyy")
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>

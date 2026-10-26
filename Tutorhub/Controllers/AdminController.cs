@@ -88,6 +88,44 @@ namespace Tutorbub.Controllers
         }
 
         // ============================================================
+        // ===== ✅ USER OVERVIEW (NEW) =====
+        // ============================================================
+        [HttpGet]
+        public IActionResult UserOverview(int? id)
+        {
+            var role = HttpContext.Session.GetString("UserRole");
+            if (role != "Admin") return RedirectToAction("Login", "Account");
+
+            // সব Non-Admin ইউজার (Student / Teacher)
+            var allUsers = _dbHelper.GetAllNonAdminUsers();
+            ViewBag.AllUsers = allUsers;
+
+            // যদি নির্দিষ্ট কোনো ইউজার সিলেক্ট করা থাকে
+            if (id.HasValue)
+            {
+                var selectedUser = allUsers.FirstOrDefault(u => u.Id == id.Value);
+                if (selectedUser != null)
+                {
+                    ViewBag.SelectedUser = selectedUser;
+
+                    // ১. সামগ্রিক স্ট্যাটস
+                    ViewBag.UserStats = _dbHelper.GetUserOverviewStats(selectedUser.Id);
+
+                    // ২. পোস্ট লিস্ট + কোন পোস্টে কতজন টিচার রেসপন্স করেছে
+                    ViewBag.UserPostStats = _dbHelper.GetUserPostStats(selectedUser.Id);
+
+                    // ৩. কোন কোন টিচার রেসপন্স করেছে (summary)
+                    ViewBag.TeachersEngaged = _dbHelper.GetTeachersEngagedWithUser(selectedUser.Id);
+
+                    // ৪. তার Tuition Applications
+                    ViewBag.UserTuitionApps = _dbHelper.GetUserTuitionApplications(selectedUser.Id);
+                }
+            }
+
+            return View();
+        }
+
+        // ============================================================
         // ===== USER MANAGEMENT =====
         // ============================================================
 
